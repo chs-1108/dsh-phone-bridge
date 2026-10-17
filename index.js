@@ -43,6 +43,158 @@ function stateDir() {
   return path.join(home, 'phone-bridge')
 }
 
+/**
+ * Which profile this process is running.
+ *
+ * DSH already knows, and a plugin cannot be running without one, so the answer
+ * is recoverable from the environment or from the directory the plugin was
+ * loaded out of (`<home>/profiles/<name>/node_modules/...`). Returns '' when it
+ * cannot be determined, in which case the automatic fix stays off.
+ */
+function profileDir() {
+  const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
+  const fromEnv = process.env.DSH_PROFILE
+  if (typeof fromEnv === 'string' && fromEnv.trim() !== '') {
+    const candidate = path.join(home, 'profiles', fromEnv.trim())
+    if (fs.existsSync(candidate)) return candidate
+  }
+  // Walk up from this file looking for .../profiles/<name>/node_modules/...
+  try {
+    let dir = path.dirname(fileURLToPath(import.meta.url))
+    for (let i = 0; i < 8; i += 1) {
+      const parent = path.dirname(dir)
+      if (parent === dir) break
+      dir = parent
+      if (path.basename(dir) === 'profiles') {
+        const entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory())
+        if (entries.length === 1) return path.join(dir, entries[0].name)
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  // Fall back to the conventional layout when only one profile exists.
+  try {
+    const root = path.join(home, 'profiles')
+    const entries = fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory())
+    if (entries.length === 1) return path.join(root, entries[0].name)
+  } catch {
+    /* ignore */
+  }
+  return ''
+}
+
+/** The patch file a profile applies last; editing it is how host gets changed. */
+function patchFile() {
+  const dir = profileDir()
+  if (dir === '') return ''
+  return path.join(dir, 'cordis.patch.yml')
+}
+
+/**
+ * The webserver row this profile should carry.
+ *
+ * A patch entry replaces the targeted row's config wholesale, so every field the
+ * shipped layer needs has to be restated - a partial row would silently drop the
+ * compression settings. `name` must match whatever the installed DSH calls this
+ * service; both spellings are in the wild across versions.
+ */
+function webserverRow(name) {
+  return [
+    `- id: webserver`,
+    `  name: '${name}'`,
+    `  inject: [webStartup]`,
+    `  config:`,
+    `    host: '0.0.0.0'`,
+    `    port: !!js ctx.webStartup.port ?? 3080`,
+    `    compression: gzip`,
+    `    compressionLevel: 1`,
+    `    compressionThresholdBytes: 1024`,
+  ]
+}
+
+/**
+ * Rewrites the profile patch so the web server listens on every interface.
+ *
+ * Deliberately line-oriented rather than a YAML parse-and-re-serialise: the file
+ * is hand-maintained, carries comments the user wrote, and contains `!!js`
+ * tags and anchors a generic serialiser would mangle. Only three shapes are
+ * handled, which covers every file this plugin has met:
+ *
+ *   1. a `- id: webserver` block whose config has a `host:` line  -> replace it
+ *   2. a `- id: webserver` block whose config has no `host:`       -> insert one
+ *   3. no webserver block at all                                   -> append one
+ *
+ * Anything it does not recognise is left untouched and reported as a failure, so
+ * a surprising file never gets silently corrupted.
+ */
+function ensureWildcardHost(text, serviceName) {
+  const lines = text.split(/\r?\n/)
+  const start = lines.findIndex((line) => /^-\s+id:\s*webserver\s*(#.*)?$/.test(line))
+  if (start === -1) {
+    const block = webserverRow(serviceName)
+    const prefix = text === '' || text.endsWith('\n') ? text : `${text}\n`
+    const sep = prefix === '' ? '' : '\n'
+    return { ok: true, changed: true, mode: 'appended', text: `${prefix}${sep}${block.join('\n')}\n` }
+  }
+
+  // Find the end of this entry: the next top-level `- ` item.
+  let end = lines.length
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^-\s/.test(lines[i])) {
+      end = i
+      break
+    }
+  }
+
+  // A host line only counts when it is inside this entry's config block.
+  let hostIndex = -1
+  for (let i = start + 1; i < end; i += 1) {
+    if (/^\s+host:\s*/.test(lines[i])) {
+      hostIndex = i
+      break
+    }
+  }
+  if (hostIndex !== -1) {
+    const current = lines[hostIndex].replace(/^\s+host:\s*/, '').replace(/\s*#.*$/, '').trim()
+    if (current === "'0.0.0.0'" || current === '"0.0.0.0"' || current === '0.0.0.0') {
+      return { ok: true, changed: false, mode: 'already-set', text }
+    }
+    const indent = (lines[hostIndex].match(/^\s*/) || ['    '])[0]
+    lines[hostIndex] = `${indent}host: '0.0.0.0'`
+    return { ok: true, changed: true, mode: 'host-replaced', text: lines.join('\n') }
+  }
+
+  // No host line: add one at the end of this entry's config block.
+  let configIndex = -1
+  for (let i = start + 1; i < end; i += 1) {
+    if (/^\s+config:\s*$/.test(lines[i])) {
+      configIndex = i
+      break
+    }
+  }
+  if (configIndex === -1) {
+    return { ok: false, changed: false, mode: 'no-config-block', text }
+  }
+  let insertAt = configIndex + 1
+  while (insertAt < end && /^\s+\S/.test(lines[insertAt])) insertAt += 1
+  const indent = `${(lines[configIndex].match(/^\s*/) || ['  '])[0]}  `
+  lines.splice(insertAt, 0, `${indent}host: '0.0.0.0'`)
+  return { ok: true, changed: true, mode: 'host-inserted', text: lines.join('\n') }
+}
+
+/** The service name the running DSH uses for the web server, when known. */
+function webserverServiceName(ctx) {
+  try {
+    const ws = ctx && ctx.webServer
+    const seen = ws && ws[Symbol.for('dsh.service.name')]
+    if (typeof seen === 'string' && seen !== '') return seen
+  } catch {
+    /* ignore */
+  }
+  return '@deepseek-ai/dsh-host-webserver'
+}
+
 function loadState() {
   const file = path.join(stateDir(), 'state.json')
   let raw = {}
@@ -1124,6 +1276,77 @@ export function apply(ctx, config) {
         // instead of a 404.
         await readJson(req)
         return sendJson(res, 200, { ...adminStatus(), message: '隧道已移除，请用 Tailscale 连接' })
+      }
+
+      // One-click repair for the one failure an otherwise correct pairing cannot
+      // survive: the web server accepted loopback only. Whoever is looking at the
+      // panel already has local admin rights, so no extra gate is needed beyond
+      // the `admin` check above.
+      if (pathname === `${ROUTE_PREFIX}/api/fix-host` && method === 'POST') {
+        await readJson(req)
+        if (!admin) {
+          return sendJson(res, 403, { ok: false, error: 'local admin only' })
+        }
+        if (!bridge.tunnel.loopbackOnly()) {
+          return sendJson(res, 200, {
+            ok: true,
+            changed: false,
+            message: '当前已经不是只监听本机，无需修改。',
+            status: adminStatus(),
+          })
+        }
+        const file = patchFile()
+        if (file === '') {
+          return sendJson(res, 200, {
+            ok: false,
+            changed: false,
+            error: '找不到当前 profile 的配置目录，请手动把 webServer 的 host 改成 0.0.0.0。',
+          })
+        }
+        let original = ''
+        try {
+          original = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
+        } catch (error) {
+          return sendJson(res, 200, {
+            ok: false,
+            changed: false,
+            error: `读取配置失败：${error && error.message ? error.message : error}`,
+          })
+        }
+        const edit = ensureWildcardHost(original, webserverServiceName(ctx))
+        if (!edit.ok) {
+          return sendJson(res, 200, {
+            ok: false,
+            changed: false,
+            error: `无法自动修改（${edit.mode}）。请手动把 webServer 的 host 改成 0.0.0.0。`,
+            file,
+          })
+        }
+        if (edit.changed) {
+          try {
+            if (fs.existsSync(file)) {
+              const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+              fs.copyFileSync(file, `${file}.phone-bridge-${stamp}.bak`)
+            }
+            fs.writeFileSync(file, edit.text, 'utf8')
+          } catch (error) {
+            return sendJson(res, 200, {
+              ok: false,
+              changed: false,
+              error: `写入配置失败：${error && error.message ? error.message : error}`,
+              file,
+            })
+          }
+        }
+        LOG(ctx, 'info', `[phone-bridge] webServer host patched (${edit.mode}) in ${file}`)
+        return sendJson(res, 200, {
+          ok: true,
+          changed: edit.changed,
+          mode: edit.mode,
+          file,
+          message: '已改成监听所有网卡。请完全退出 DSH 再重新打开，改动才会生效。',
+          status: adminStatus(),
+        })
       }
 
       if (pathname === `${ROUTE_PREFIX}/api/prefs` && method === 'POST') {

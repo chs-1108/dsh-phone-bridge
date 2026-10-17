@@ -48,6 +48,9 @@ window.__ModuleLoader__.load({
         '当前 DSH 的 web 服务只接受本机连接，手机发来的请求根本到不了这里。扫码再多遍也没用，必须先改监听地址。',
       loopbackFix:
         '在 profile 的 cordis.patch.yml 里把 webServer 的 host 改成 0.0.0.0，然后完全退出并重新打开 DSH。',
+      fixHost: '一键修复',
+      fixHostHint: '自动改配置，改完需要重启 DSH',
+      fixHostDone: '已修好',
       tokenLabel: '配对密钥',
       sessionTitle: '目标会话',
       sessionLabel: '当前会话',
@@ -85,6 +88,9 @@ window.__ModuleLoader__.load({
         'The DSH web server is accepting local connections only, so requests from the phone never arrive. Scanning the code again will not help — the listening address has to change first.',
       loopbackFix:
         'Set webServer host to 0.0.0.0 in the profile cordis.patch.yml, then fully quit and reopen DSH.',
+      fixHost: 'Fix it for me',
+      fixHostHint: 'edits the config; DSH must restart after',
+      fixHostDone: 'Fixed',
       tokenLabel: 'Pairing token',
       sessionTitle: 'Target session',
       sessionLabel: 'Current session',
@@ -146,6 +152,8 @@ window.__ModuleLoader__.load({
       '.pb-err{color:var(--dsw-alias-status-error, #d04848)}',
       '.pb-warn{border-color:var(--dsw-alias-status-error, #d04848)}',
       '.pb-warn-text{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px}',
+      '.pb-btn-primary{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary-contrast, #fff);font-weight:600}',
+      '.pb-btn:disabled{opacity:.55;cursor:default}',
       '.pb-pre{margin:0;max-height:150px;overflow:auto;background:var(--dsw-alias-bg-layer-1);border-radius:8px;padding:8px 10px;font-size:11px;white-space:pre-wrap}',
       '.pb-hr{height:1px;background:var(--dsw-alias-border-l2);border:0;margin:0}',
     ].join('')
@@ -178,6 +186,9 @@ window.__ModuleLoader__.load({
       var copiedState = React.useState(false)
       var copied = copiedState[0]
       var setCopied = copiedState[1]
+      var fixState = React.useState('')
+      var fixNote = fixState[0]
+      var setFixNote = fixState[1]
 
       var load = React.useCallback(function () {
         return api('/status')
@@ -257,7 +268,8 @@ window.__ModuleLoader__.load({
 
       // A correct pairing still fails when the web server bound itself to
       // loopback: the phone's request never reaches this process. Raise it above
-      // everything else, because no amount of QR scanning fixes it.
+      // everything else, because no amount of QR scanning fixes it - and offer the
+      // repair right there, since the user is already in the panel that owns it.
       var loopbackWarning =
         status && status.loopbackOnly
           ? h(
@@ -265,7 +277,30 @@ window.__ModuleLoader__.load({
               { className: 'pb-card pb-warn' },
               h('div', { className: 'pb-card-title' }, t('loopbackTitle')),
               h('p', { className: 'pb-warn-text' }, t('loopbackBody')),
-              h('p', { className: 'pb-warn-text pb-mono' }, t('loopbackFix')),
+              h(
+                'div',
+                { className: 'pb-row' },
+                h(
+                  'button',
+                  {
+                    className: 'pb-btn pb-btn-primary',
+                    disabled: busy,
+                    onClick: function () {
+                      run(function () {
+                        return post('/fix-host').then(function (res) {
+                          setFixNote(res && res.message ? res.message : t('fixHostDone'))
+                          return res
+                        })
+                      })
+                    },
+                  },
+                  t('fixHost'),
+                ),
+                h('span', { className: 'pb-muted' }, t('fixHostHint')),
+              ),
+              fixNote
+                ? h('p', { className: 'pb-warn-text' }, fixNote)
+                : h('p', { className: 'pb-warn-text pb-mono' }, t('loopbackFix')),
             )
           : null
 
