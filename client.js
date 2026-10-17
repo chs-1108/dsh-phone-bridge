@@ -27,11 +27,11 @@ window.__ModuleLoader__.load({
 
     var zh = {
       title: '手机同步',
-      intro: '手机通过内网穿透隧道连接本机 DSH：手机可以发送文字与拍照图片，Agent 的回复会回到手机上。',
-      statusLabel: '隧道状态',
-      statusStopped: '未启动',
+      intro: '手机可以直接用本机 DSH：发送文字与拍照图片，Agent 的回复会回到手机上。手机通过 Tailscale 连到这台电脑。',
+      statusLabel: '连接地址',
+      statusStopped: '未就绪',
       statusStarting: '启动中…',
-      statusRunning: '已连接',
+      statusRunning: '就绪',
       statusError: '出错',
       start: '启动隧道',
       stop: '停止隧道',
@@ -41,7 +41,8 @@ window.__ModuleLoader__.load({
       pairHint: '用手机 App 扫描二维码，或手动复制下面的地址填写到 App 中。',
       copy: '复制地址',
       copied: '已复制',
-      noUrl: '隧道尚未就绪，请先启动隧道。',
+      noAddress: '没有找到可用的地址。请在这台电脑上装好 Tailscale 并连上，或接入网络后重试。',
+      noUrl: '暂无可用地址。',
       tokenLabel: '配对密钥',
       sessionTitle: '目标会话',
       sessionLabel: '当前会话',
@@ -58,11 +59,11 @@ window.__ModuleLoader__.load({
     var en = {
       title: 'Phone Sync',
       intro:
-        'Connect a phone to this DSH over a tunnel: the phone sends text and photos, and the Agent reply returns to the phone.',
-      statusLabel: 'Tunnel',
+        'Use this DSH from your phone: it sends text and photos, and the Agent reply comes back to it. The phone reaches this PC over Tailscale.',
+      statusLabel: 'Address',
       statusStopped: 'Stopped',
       statusStarting: 'Starting…',
-      statusRunning: 'Connected',
+      statusRunning: 'Ready',
       statusError: 'Error',
       start: 'Start tunnel',
       stop: 'Stop tunnel',
@@ -72,7 +73,8 @@ window.__ModuleLoader__.load({
       pairHint: 'Scan the QR code with the phone app, or copy the address below into the app.',
       copy: 'Copy address',
       copied: 'Copied',
-      noUrl: 'The tunnel is not ready yet — start it first.',
+      noAddress: 'No reachable address found. Install Tailscale on this PC, or connect to a network.',
+      noUrl: 'No reachable address yet.',
       tokenLabel: 'Pairing token',
       sessionTitle: 'Target session',
       sessionLabel: 'Current session',
@@ -200,17 +202,13 @@ window.__ModuleLoader__.load({
           })
       }
 
-      var tunnel = (status && status.tunnel) || { status: 'stopped' }
-      var running = tunnel.status === 'running'
-      var dotClass = 'pb-dot pb-dot-' + (tunnel.status || 'stopped')
-      var statusText =
-        tunnel.status === 'running'
-          ? t('statusRunning')
-          : tunnel.status === 'starting'
-            ? t('statusStarting')
-            : tunnel.status === 'error'
-              ? t('statusError')
-              : t('statusStopped')
+      // No tunnel to report on any more: the phone reaches this PC over
+      // Tailscale or the LAN. What matters on screen is whether there is a
+      // usable address, which the pair URL already answers.
+      var candidates = (status && status.pairCandidates) || []
+      var hasAddress = Boolean(status && status.pairUrl)
+      var dotClass = 'pb-dot pb-dot-' + (hasAddress ? 'running' : 'error')
+      var statusText = hasAddress ? t('statusRunning') : t('noAddress')
 
       var pairUrl = (status && status.pairUrl) || ''
       var qrSrc = '/phone-bridge/qr.svg?token=' + encodeURIComponent((status && status.token) || '')
@@ -282,24 +280,21 @@ window.__ModuleLoader__.load({
                 'button',
                 {
                   type: 'button',
-                  className: 'pb-btn' + (running ? '' : ' pb-btn-primary'),
+                  className: 'pb-btn',
                   disabled: busy,
                   onClick: function () {
                     run(function () {
-                      return post('/tunnel', { action: running ? 'stop' : 'start' })
+                      return load()
                     })
                   },
                 },
-                busy ? t('busy') : running ? t('stop') : t('start'),
+                busy ? t('busy') : t('refresh'),
               ),
             ),
           ),
-          tunnel.error
-            ? h('div', { className: 'pb-err pb-mono' }, String(tunnel.error))
-            : null,
-          tunnel.tail
-            ? h('pre', { className: 'pb-pre' }, String(tunnel.tail))
-            : null,
+          hasAddress
+            ? null
+            : h('div', { className: 'pb-err pb-mono' }, String(t('noAddress'))),
         ),
 
         h(

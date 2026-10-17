@@ -113,16 +113,13 @@ DSH webServer  ──▶  /phone-bridge 前缀路由  ──▶  sessionControll
 | **要一键部署 / 构建 APK**（推荐） | `git clone https://github.com/chs-1108/dsh-phone-bridge.git` | 全部 44 个文件 |
 | **不想装 git** | 下 [ZIP](https://github.com/chs-1108/dsh-phone-bridge/archive/refs/heads/main.zip) 解压 | 同上 |
 
-### 仓库里有两个大文件不在 Git 中
+### 仓库里的大文件不在 Git 中
 
 | 文件 | 大小 | 为什么不在 | 谁负责取 |
 | --- | --- | --- | --- |
 | `bin/tailscale-android.apk` | 100.6 MB | 超 GitHub 单文件 100 MB 硬限制 | **`setup-phone-bridge.ps1` 自动从 F-Droid 下载** |
-| `bin/cloudflared.exe` | 52.8 MB | 体积大且非必需 | 只在用 cloudflared 隧道时才需要 |
 
 `tailscale-android.apk` 不用管 —— 脚本第 9 步检测到缺失就会自己下载（约 100 MB，一次性）。也可以自己在手机上装 Play Store 版 Tailscale，然后加 `-SkipPhone`。
-
-`cloudflared.exe` 只有想拿 Cloudflare 隧道替代 Tailscale 时才要，从 [cloudflared releases](https://github.com/cloudflare/cloudflared/releases) 下 `cloudflared-windows-amd64.exe`，改名放进 `bin\`。
 
 ### 装完之后验证
 
@@ -307,7 +304,7 @@ Tailscale 在两端都是后台服务，关掉窗口不会断隧道，重启后�
 
 本插件**不含**任何服务器地址、token 或账号。这些值由 `build-apk.ps1` 在构建时通过 `-BaseUrl` / `-Token` 注入，仓库里的 `BuildDefaults.java` 和 `network_security_config.xml` 除回环地址外一律留空。
 
-流量只在你自己的 tailnet 内。不经任何第三方中转；除非你显式启动，插件不会发起额外的出站连接（可选的 `cloudflared` 隧道除外）。
+流量只在你自己的 tailnet 内，点对点加密，不经任何第三方中转。插件不会发起任何额外的出站连接。
 
 把 token 当密码看待：拿到它的人就能跟你的 DSH 对话。要轮换，删掉 `~/.dsh/phone-bridge/state.json` 里的 `token` 后重启。
 

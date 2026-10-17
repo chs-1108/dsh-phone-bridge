@@ -183,7 +183,7 @@ try {
 }
 check(
   'Panel output carries localized body text',
-  panelTree && JSON.stringify(panelTree).includes('隧道状态'),
+  panelTree && JSON.stringify(panelTree).includes('连接地址'),
   'statusLabel present in Panel',
 )
 

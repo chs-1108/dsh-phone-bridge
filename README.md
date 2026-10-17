@@ -299,7 +299,7 @@ Full detail, including the nine capture bugs and why each fix was needed, is in 
 
 This plugin ships **no** server address, token, or account. Values are injected at build time by `build-apk.ps1` from `-BaseUrl` / `-Token`, and the committed `BuildDefaults.java` and `network_security_config.xml` stay blank apart from loopback.
 
-Traffic stays inside your own tailnet. Nothing is proxied through a third-party service, and the plugin makes no outbound connections except the optional `cloudflared` tunnel if you explicitly start one.
+Traffic stays inside your own tailnet, end-to-end encrypted, with nothing proxied through a third party. The plugin opens no additional outbound connections.
 
 Treat the token like a password: anyone holding it can talk to your DSH. Rotate it by deleting `token` from `~/.dsh/phone-bridge/state.json` and restarting.
 

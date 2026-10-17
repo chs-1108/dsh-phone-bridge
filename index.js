@@ -1,14 +1,15 @@
 /**
  * phone-bridge — Host half.
  *
- * Bridges a phone (on ANY network, reached through a cloudflared quick tunnel)
- * to this Harness process:
+ * Lets the phone use this Harness process: send text and photos, get the answer
+ * back. The phone reaches the PC over Tailscale, so it works from any network
+ * without exposing anything publicly.
  *
- *   phone --HTTPS--> cloudflared --> webServer(/phone-bridge/*) --> sessionController
+ *   phone --Tailscale--> webServer(/phone-bridge/*) --> sessionController
  *
- * The phone sends text and/or photos; the Agent answer is streamed back.
- * By default the phone receives only the final answer; a per-send flag
- * (and a persisted default) also returns the reasoning stream.
+ * The Agent answer is streamed back. By default the phone receives only the
+ * final answer; a per-send flag (and a persisted default) also returns the
+ * reasoning stream.
  */
 
 import fs from 'node:fs'
@@ -56,9 +57,11 @@ function loadState() {
   }
   if (typeof raw.sessionId !== 'string' || raw.sessionId === '') raw.sessionId = null
   if (typeof raw.cwd !== 'string' || raw.cwd === '') raw.cwd = null
-  if (typeof raw.cloudflaredPath !== 'string' || raw.cloudflaredPath === '') raw.cloudflaredPath = null
   if (typeof raw.defaultShowThinking !== 'boolean') raw.defaultShowThinking = false
-  if (typeof raw.lastTunnelUrl !== 'string') raw.lastTunnelUrl = null
+  // Older state files carry cloudflaredPath / lastTunnelUrl; drop them so the
+  // file stops advertising a transport this version no longer has.
+  delete raw.cloudflaredPath
+  delete raw.lastTunnelUrl
   saveState(raw)
   return raw
 }
@@ -206,7 +209,12 @@ function isLoopbackAddress(addr) {
   return a === '::1' || a === '127.0.0.1' || a.startsWith('127.')
 }
 
-/** cloudflared proxies from 127.0.0.1, so its own markers identify remote traffic. */
+/**
+ * True when the request arrived through a proxy rather than straight from the
+ * client. Tailscale delivers packets directly, so a proxied request means the
+ * bridge is being reached from somewhere it was not meant to be, and the token
+ * is then required.
+ */
 function isTunneled(req) {
   const h = req.headers || {}
   return Boolean(
@@ -281,37 +289,25 @@ function appHtml() {
   return appHtmlCache
 }
 
-/* --------------------------------------------------------------- cloudflared */
+/* -------------------------------------------------------------------- server */
 
-const QUICK_TUNNEL_RE = /https:\/\/[a-z0-9][a-z0-9-]*\.trycloudflare\.com/gi
-
+/**
+ * Where the bridge is reachable from.
+ *
+ * This used to wrap a cloudflared quick tunnel. Tailscale already connects the
+ * phone to the PC privately and works across networks, which is the whole point
+ * of the plugin, so a public tunnel only added a second, less private way to do
+ * the same thing - and 52 MB of binary. All that is still needed here is the
+ * port the web server listens on.
+ */
 class Tunnel {
   constructor(getCtx, state) {
     this.ctx = () => getCtx()
     this.state = state
-    this.child = null
-    this.url = state.lastTunnelUrl || null
-    this.status = 'stopped' // stopped | starting | running | error
-    this.error = null
-    this.log = []
-    this.startedAt = null
   }
 
   snapshot() {
-    return {
-      status: this.status,
-      url: this.url,
-      error: this.error,
-      startedAt: this.startedAt,
-      pid: this.child && this.child.pid ? this.child.pid : null,
-      executable: this.executable(),
-      tail: this.log.slice(-12).join('\n'),
-    }
-  }
-
-  executable() {
-    if (this.state.cloudflaredPath) return this.state.cloudflaredPath
-    return path.join(path.dirname(fileURLToPath(import.meta.url)), 'bin', 'cloudflared.exe')
+    return { status: 'disabled', url: null, error: null, startedAt: null, pid: null, executable: null, tail: '' }
   }
 
   port() {
@@ -325,73 +321,9 @@ class Tunnel {
     return 17890
   }
 
-  note(line) {
-    if (typeof line !== 'string' || line === '') return
-    this.log.push(line.replace(/\s+$/, '').slice(0, 400))
-    if (this.log.length > 200) this.log.splice(0, this.log.length - 200)
-  }
+  note() {}
 
   start() {
-    if (this.child) return this.snapshot()
-    const exe = this.executable()
-    if (!fs.existsSync(exe)) {
-      this.status = 'error'
-      this.error = `cloudflared 未找到：${exe}`
-      return this.snapshot()
-    }
-    const port = this.port()
-    this.status = 'starting'
-    this.error = null
-    this.startedAt = Date.now()
-    this.log = []
-    this.note(`spawn ${exe} tunnel --no-autoupdate --url http://127.0.0.1:${port}`)
-    let child
-    try {
-      child = spawn(exe, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${port}`], {
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
-    } catch (err) {
-      this.status = 'error'
-      this.error = String((err && err.message) || err)
-      return this.snapshot()
-    }
-    this.child = child
-
-    const consume = (buf) => {
-      const text = buf.toString('utf8')
-      for (const line of text.split(/\r?\n/)) {
-        if (!line.trim()) continue
-        this.note(line)
-        const found = line.match(QUICK_TUNNEL_RE)
-        if (found && found.length > 0) {
-          const url = found[0].replace(/\/+$/, '')
-          if (url !== this.url) {
-            this.url = url
-            this.state.lastTunnelUrl = url
-            saveState(this.state)
-            LOG(this.ctx(), 'info', `tunnel url ${url}`)
-          }
-          this.status = 'running'
-        }
-      }
-    }
-    child.stdout.on('data', consume)
-    child.stderr.on('data', consume)
-    child.on('error', (err) => {
-      this.status = 'error'
-      this.error = String((err && err.message) || err)
-      this.child = null
-    })
-    child.on('exit', (code) => {
-      this.note(`cloudflared exited code=${code}`)
-      if (this.status !== 'stopped') {
-        this.status = code === 0 ? 'stopped' : 'error'
-        if (code !== 0) this.error = `cloudflared 退出码 ${code}`
-      }
-      this.child = null
-      this.startedAt = null
-    })
     return this.snapshot()
   }
 
@@ -975,10 +907,6 @@ class Bridge {
 export function apply(ctx, config) {
   const cfg = config && typeof config === 'object' ? config : {}
   const state = loadState()
-  if (cfg.cloudflaredPath && typeof cfg.cloudflaredPath === 'string' && !state.cloudflaredPath) {
-    state.cloudflaredPath = cfg.cloudflaredPath
-    saveState(state)
-  }
   if (typeof cfg.defaultShowThinking === 'boolean') state.defaultShowThinking = cfg.defaultShowThinking
 
   const bridge = new Bridge(ctx, state)
@@ -1017,38 +945,24 @@ export function apply(ctx, config) {
   /**
    * The address the phone should pair with.
    *
-   * A public tunnel is the best answer when one is running: it works from any
-   * network. Without one the plugin is still reachable over the LAN or a
-   * Tailscale address, and returning nothing there produced a QR code that
-   * encoded an empty string, so scanning it paired the app with nothing. Fall
-   * back to this machine's reachable IPv4 addresses instead.
-   */
-  /**
-   * The address the phone should pair with.
-   *
-   * A running tunnel is preferred because it works from any network, but it also
-   * puts the bridge on a public URL. Tailscale already connects the two devices
-   * privately and works across networks too, so when a 100.64/10 address exists
-   * that is the better answer and the tunnel is only the fallback.
+   * Tailscale first: it connects the two devices privately and keeps working
+   * when the phone leaves the house. LAN is the fallback for a setup without it.
    */
   const pairBase = () => {
     const port = webServerPort()
     const hosts = reachableAddresses()
-    if (hosts.length > 0) return `http://${hosts[0]}:${port}`
-    if (state.lastTunnelUrl) return state.lastTunnelUrl
-    return ''
+    if (hosts.length === 0) return ''
+    return `http://${hosts[0]}:${port}`
   }
 
   /** Every address the phone could pair with, so the UI can offer a choice. */
   const pairCandidates = () => {
     const port = webServerPort()
-    const list = reachableAddresses().map((host) => ({
+    return reachableAddresses().map((host) => ({
       url: `http://${host}:${port}`,
       kind: /^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\./.test(host) ? 'tailscale' : 'lan',
       host,
     }))
-    if (state.lastTunnelUrl) list.push({ url: state.lastTunnelUrl, kind: 'tunnel', host: '' })
-    return list
   }
 
   const pairUrl = () => {
@@ -1138,24 +1052,11 @@ export function apply(ctx, config) {
       }
 
       if (pathname === `${ROUTE_PREFIX}/api/tunnel` && method === 'POST') {
-        const body = await readJson(req)
-        const action = String(body.action || '')
-        if (action === 'start') {
-          const auto = bridge.tunnel.status === 'stopped'
-          bridge.tunnel.start()
-          if (auto) {
-            // wait up to 30s for the quick-tunnel hostname
-            const deadline = Date.now() + 30000
-            while (bridge.tunnel.status === 'starting' && Date.now() < deadline) {
-              await new Promise((r) => setTimeout(r, 400))
-            }
-          }
-        } else if (action === 'stop') {
-          bridge.tunnel.stop()
-        } else {
-          return sendJson(res, 400, { ok: false, error: 'action must be start|stop' })
-        }
-        return sendJson(res, 200, adminStatus())
+        // Tunnels were removed: Tailscale is how the phone reaches the PC now.
+        // Keep the route answering so an older Settings panel gets a clear reply
+        // instead of a 404.
+        await readJson(req)
+        return sendJson(res, 200, { ...adminStatus(), message: '隧道已移除，请用 Tailscale 连接' })
       }
 
       if (pathname === `${ROUTE_PREFIX}/api/prefs` && method === 'POST') {
@@ -1228,16 +1129,7 @@ export function apply(ctx, config) {
       /* ignore */
     }
     bridge.stopFollower()
-    bridge.tunnel.stop()
   })
-
-  if (cfg.autoStart !== false) {
-    try {
-      bridge.tunnel.start()
-    } catch {
-      /* ignore */
-    }
-  }
 
   LOG(ctx, 'info', `ready at ${ROUTE_PREFIX} (port ${bridge.tunnel.port()})`)
 }
