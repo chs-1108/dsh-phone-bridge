@@ -46,41 +46,83 @@ function stateDir() {
 /**
  * Which profile this process is running.
  *
- * DSH already knows, and a plugin cannot be running without one, so the answer
- * is recoverable from the environment or from the directory the plugin was
- * loaded out of (`<home>/profiles/<name>/node_modules/...`). Returns '' when it
- * cannot be determined, in which case the automatic fix stays off.
+ * The plugin is installed as a junction (`<home>/profiles/<name>/node_modules/
+ * <pkg>` -> `<home>/<pkg>`), and `import.meta.url` reports the *resolved* target.
+ * Walking up from the real path therefore never meets a `profiles` directory, so
+ * that approach alone silently fails on the default install - it returns '' and
+ * the automatic repair appears to do nothing.
+ *
+ * Candidates are tried in order of confidence:
+ *
+ *   1. DSH_PROFILE, when DSH exports it
+ *   2. the profile whose node_modules actually contains this package (junction or
+ *      copy - compared both by resolved path and by realpath)
+ *   3. the profile whose patch file already mentions this plugin
+ *   4. the only profile on disk, if there is exactly one
+ *
+ * Returns '' when nothing is convincing, in which case the repair refuses rather
+ * than editing the wrong file.
  */
+function profileRoot() {
+  return path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'profiles')
+}
+
+function profileDirs() {
+  try {
+    return fs
+      .readdirSync(profileRoot(), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(profileRoot(), entry.name))
+  } catch {
+    return []
+  }
+}
+
+function realOrSelf(target) {
+  try {
+    return fs.realpathSync.native(target)
+  } catch {
+    try {
+      return fs.realpathSync(target)
+    } catch {
+      return target
+    }
+  }
+}
+
 function profileDir() {
-  const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
   const fromEnv = process.env.DSH_PROFILE
   if (typeof fromEnv === 'string' && fromEnv.trim() !== '') {
-    const candidate = path.join(home, 'profiles', fromEnv.trim())
+    const candidate = path.join(profileRoot(), fromEnv.trim())
     if (fs.existsSync(candidate)) return candidate
   }
-  // Walk up from this file looking for .../profiles/<name>/node_modules/...
-  try {
-    let dir = path.dirname(fileURLToPath(import.meta.url))
-    for (let i = 0; i < 8; i += 1) {
-      const parent = path.dirname(dir)
-      if (parent === dir) break
-      dir = parent
-      if (path.basename(dir) === 'profiles') {
-        const entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory())
-        if (entries.length === 1) return path.join(dir, entries[0].name)
-      }
+
+  const profiles = profileDirs()
+  if (profiles.length === 0) return ''
+
+  // This package's own directory, as resolved by the loader (junction target).
+  const selfDir = fileURLToPath(new URL('.', import.meta.url)).replace(/[\\/]$/, '')
+  const selfReal = realOrSelf(selfDir)
+
+  // 2. The profile that actually mounts this package.
+  for (const dir of profiles) {
+    const mounted = path.join(dir, 'node_modules', name)
+    if (!fs.existsSync(mounted)) continue
+    if (realOrSelf(mounted) === selfReal) return dir
+  }
+
+  // 3. The profile whose patch layer already references this plugin.
+  for (const dir of profiles) {
+    const patch = path.join(dir, 'cordis.patch.yml')
+    try {
+      if (fs.existsSync(patch) && fs.readFileSync(patch, 'utf8').includes(name)) return dir
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
   }
-  // Fall back to the conventional layout when only one profile exists.
-  try {
-    const root = path.join(home, 'profiles')
-    const entries = fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory())
-    if (entries.length === 1) return path.join(root, entries[0].name)
-  } catch {
-    /* ignore */
-  }
+
+  // 4. Unambiguous only when a single profile exists.
+  if (profiles.length === 1) return profiles[0]
   return ''
 }
 
@@ -1297,10 +1339,16 @@ export function apply(ctx, config) {
         }
         const file = patchFile()
         if (file === '') {
+          // Naming the paths is the difference between a dead end and a fix: the
+          // user can copy the target path straight into their editor.
+          const found = profileDirs().map((dir) => path.basename(dir))
           return sendJson(res, 200, {
             ok: false,
             changed: false,
-            error: '找不到当前 profile 的配置目录，请手动把 webServer 的 host 改成 0.0.0.0。',
+            error:
+              found.length > 0
+                ? `无法确定当前使用哪个 profile（发现：${found.join('、')}）。请手动把 webServer 的 host 改成 0.0.0.0，文件在 ${path.join(profileRoot(), '<profile>', 'cordis.patch.yml')}`
+                : `没有找到 DSH 的 profile 目录（${profileRoot()}）。请手动把 webServer 的 host 改成 0.0.0.0。`,
           })
         }
         let original = ''
@@ -1311,6 +1359,7 @@ export function apply(ctx, config) {
             ok: false,
             changed: false,
             error: `读取配置失败：${error && error.message ? error.message : error}`,
+            file,
           })
         }
         const edit = ensureWildcardHost(original, webserverServiceName(ctx))
