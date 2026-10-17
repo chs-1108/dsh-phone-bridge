@@ -983,8 +983,56 @@ export function apply(ctx, config) {
 
   const bridge = new Bridge(ctx, state)
 
+  /** The port the web server actually listens on. */
+  const webServerPort = () => bridge.tunnel.port()
+
+  /**
+   * This machine's addresses that another device could reach, best first.
+   *
+   * Tailscale (100.64.0.0/10) comes first because it works across networks and
+   * survives the phone leaving the house; then private LAN ranges, which only
+   * work on the same WiFi. Loopback and link-local are useless for pairing, so
+   * they are skipped.
+   */
+  const reachableAddresses = () => {
+    const tailscale = []
+    const lan = []
+    const interfaces = os.networkInterfaces()
+    for (const name of Object.keys(interfaces)) {
+      for (const info of interfaces[name] || []) {
+        if (info.family !== 'IPv4' && info.family !== 4) continue
+        if (info.internal) continue
+        const address = info.address
+        if (address.startsWith('169.254.')) continue
+        if (/^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\./.test(address)) {
+          tailscale.push(address)
+        } else if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address)) {
+          lan.push(address)
+        }
+      }
+    }
+    return [...tailscale, ...lan]
+  }
+
+  /**
+   * The address the phone should pair with.
+   *
+   * A public tunnel is the best answer when one is running: it works from any
+   * network. Without one the plugin is still reachable over the LAN or a
+   * Tailscale address, and returning nothing there produced a QR code that
+   * encoded an empty string, so scanning it paired the app with nothing. Fall
+   * back to this machine's reachable IPv4 addresses instead.
+   */
+  const pairBase = () => {
+    if (state.lastTunnelUrl) return state.lastTunnelUrl
+    const port = webServerPort()
+    const hosts = reachableAddresses()
+    if (hosts.length === 0) return ''
+    return `http://${hosts[0]}:${port}`
+  }
+
   const pairUrl = () => {
-    const base = state.lastTunnelUrl || ''
+    const base = pairBase()
     if (!base) return ''
     return `${base}${ROUTE_PREFIX}/#t=${state.token}`
   }
