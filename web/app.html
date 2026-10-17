@@ -405,7 +405,18 @@
     };
     sheetBody.appendChild(b2);
     var b3 = el('button', 'sess', '清除配对（重新扫码）');
-    b3.onclick = function () { localStorage.removeItem('pb.paired'); location.href = '/phone-bridge/'; };
+    b3.onclick = function () {
+      // The pairing lives in native SharedPreferences, not in localStorage, so
+      // the page cannot clear it alone. Without the bridge call the app kept
+      // reconnecting to the old host after the user asked to re-pair.
+      localStorage.removeItem('pb.paired');
+      if (window.PhoneBridge && typeof window.PhoneBridge.unpair === 'function') {
+        window.PhoneBridge.unpair();
+        return;
+      }
+      // Plain browser (no native shell): only the stored page state can go.
+      location.href = '/phone-bridge/';
+    };
     sheetBody.appendChild(b3);
     sheet.classList.add('open');
   });

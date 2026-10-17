@@ -75,6 +75,24 @@ public final class MainActivity extends Activity {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
 
+        // Pairing lives in SharedPreferences, which the page cannot touch. Expose
+        // the one operation the UI genuinely needs: forget this host so the user
+        // can point the app at their own computer instead.
+        web.addJavascriptInterface(new Object() {
+            @android.webkit.JavascriptInterface
+            public void unpair() {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        BridgeConfig.clear(MainActivity.this);
+                        BridgeService.stop(MainActivity.this);
+                        startActivity(new Intent(MainActivity.this, SetupActivity.class));
+                        finish();
+                    }
+                });
+            }
+        }, "PhoneBridge");
+
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {

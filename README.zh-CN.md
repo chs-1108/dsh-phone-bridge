@@ -261,18 +261,30 @@ cat ~/.dsh/phone-bridge/state.json
 
 **纯浏览器** —— 手机装 Tailscale，登同一个账号，开启 VPN，打开 URL。照片走标准文件选择器。
 
-**原生 APK** —— 把自己的地址烘进去构建：
+**通用 APK（发给别人用这个）** —— 无参数构建，每个用户连自己的电脑：
+
+```powershell
+pwsh -File build-apk.ps1
+adb install -r apk-out/phone-bridge.apk
+```
+
+安装后打开，出现配对页。两种填法：
+
+- **扫码** —— 点「扫描二维码」，扫电脑上 DSH → 设置 → 手机同步里显示的码
+- **手填** —— 直接粘贴那页上的地址和密钥
+
+配对信息存在手机本地，换电脑时进 App 的「设置 → 清除配对（重新扫码）」重来一次即可。
+
+**预配对 APK（只给自己用）** —— 把自己的地址烘进去，打开就是主界面，完全跳过配对：
 
 ```powershell
 .\build-apk.ps1 -BaseUrl "http://100.x.y.z:19387/phone-bridge" -Token "<你的 token>"
 adb install -r apk-out/phone-bridge.apk
 ```
 
-这样 App 会完全跳过扫码页。不带 `-BaseUrl` 构建则是通用包，扫 DSH 设置里的二维码配对。
+烘进去的包只能连这一台电脑，换机器必须重新构建——所以不要发布这种包。
 
-**二维码配对** —— 无参数运行 `build-apk.ps1`，安装后扫 DSH → 设置 → 手机同步里的码。
-
-Tailscale 在两端都是后台服务，关掉窗口不会断隧道，重启后也会自动连回来。
+Tailscale 在两端都是后台服务，关掉窗口不会断隧道，重启后也会自动连回来。手机端 App 自带前台服务，息屏和切后台都不会断连。
 
 ## 实现原理
 
