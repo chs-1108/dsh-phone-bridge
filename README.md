@@ -147,6 +147,23 @@ dsh plugin --profile desktop add "D:\path\to\phone-bridge-plugin-1.1.2.zip"
 DSH's web server binds `127.0.0.1` by default — it is meant for the local browser
 only, so **requests from the phone over Tailscale are refused outright**.
 
+#### Automatic (recommended)
+
+Open **Settings → Phone Sync**. If a red block reports the server is listening on
+loopback only, click **Fix it for me**:
+
+```
+🔴 DSH listens on loopback only
+   The web server accepts local connections only, so requests from the phone
+   never arrive.
+   [ Fix it for me ]   edits the config; DSH must restart after
+```
+
+The plugin locates the current profile's `cordis.patch.yml`, changes `host`, and
+leaves a timestamped backup beside it. Then **fully quit DSH and reopen it**.
+
+#### Manual
+
 Edit the profile's `cordis.patch.yml`:
 
 ```
@@ -158,17 +175,23 @@ Add this (if a `webserver` entry already exists, change only `host`):
 
 ```yaml
 - id: webserver
-  name: '@deepseek-ai/dsh-web-server'
+  name: '@deepseek-ai/dsh-host-webserver'
+  inject: [webStartup]
   config:
     host: '0.0.0.0'
     port: !!js ctx.webStartup.port ?? 3080
     compression: gzip
     compressionLevel: 1
     compressionThresholdBytes: 1024
-  inject: [webStartup]
 ```
 
-Then **fully quit DSH and reopen it** (closing the window is not enough). Verify:
+> `name` is `@deepseek-ai/dsh-host-webserver` or `@deepseek-ai/dsh-web-server`
+> depending on the DSH version. The automatic fix reuses whatever the file
+> already says.
+
+#### Verify
+
+**Fully quit DSH and reopen it** (closing the window is not enough), then:
 
 ```powershell
 netstat -ano | findstr LISTENING | findstr 19387
@@ -179,8 +202,8 @@ netstat -ano | findstr LISTENING | findstr 19387
 | `0.0.0.0:19387` or `[::]:19387` | ✅ the phone can reach it |
 | `127.0.0.1:19387` | ❌ local only, the phone will always fail |
 
-**From v1.1.2 the plugin checks this itself** and shows a red block at the top of
-the settings panel naming the cause, so you no longer have to guess.
+**From v1.1.2 the plugin detects this itself** and offers the repair inline, so
+you never have to guess.
 
 ```bash
 curl http://127.0.0.1:19387/phone-bridge/health

@@ -146,7 +146,21 @@ dsh plugin --profile desktop add "D:\path\to\phone-bridge-plugin-1.1.2.zip"
 
 DSH 的 web 服务默认只监听 `127.0.0.1` —— 它本来只服务本机浏览器，**手机从 Tailscale 过来的请求会被直接拒掉**。
 
-编辑 profile 的 `cordis.patch.yml`：
+#### 自动修（推荐）
+
+打开「设置 → 手机同步」。如果顶部出现红框提示「DSH 只监听本机」，**点「一键修复」**就好：
+
+```dsh-ui 示例
+🔴 DSH 只监听本机
+   当前 DSH 的 web 服务只接受本机连接，手机发来的请求根本到不了这里。
+   [ 一键修复 ]  自动改配置，改完需要重启 DSH
+```
+
+插件会自己找到当前 profile 的 `cordis.patch.yml`，改好 `host`，并在旁边留一份带时间戳的备份。然后**完全退出 DSH 再打开**。
+
+#### 手动修
+
+编辑：
 
 ```
 Windows: %USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml
@@ -157,17 +171,21 @@ macOS/Linux: ~/.dsh/profiles/desktop/cordis.patch.yml
 
 ```yaml
 - id: webserver
-  name: '@deepseek-ai/dsh-web-server'
+  name: '@deepseek-ai/dsh-host-webserver'
+  inject: [webStartup]
   config:
     host: '0.0.0.0'
     port: !!js ctx.webStartup.port ?? 3080
     compression: gzip
     compressionLevel: 1
     compressionThresholdBytes: 1024
-  inject: [webStartup]
 ```
 
-然后**完全退出 DSH 再打开**（关窗口不算）。验证：
+> 这里的 `name` 在不同 DSH 版本里可能是 `@deepseek-ai/dsh-host-webserver` 或 `@deepseek-ai/dsh-web-server`。自动修会沿用文件里已有的写法。
+
+#### 验证
+
+**完全退出 DSH 再打开**（关窗口不算），然后：
 
 ```powershell
 netstat -ano | findstr LISTENING | findstr 19387
