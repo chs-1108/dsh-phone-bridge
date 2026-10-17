@@ -61,6 +61,10 @@ try {
     # Never ship scratch state, editor leftovers, or build scratch.
     Get-ChildItem $Target -Recurse -Force -Include '*.bak', '*.bak-*', '*.orig', '*~', 'state.json', '*.idsig' |
         Remove-Item -Force -ErrorAction SilentlyContinue
+    # The Tailscale installer is 100 MB and only the deploy script wants it, so it
+    # is fetched on demand instead of riding along in every download.
+    $tailscaleApk = Join-Path $Target 'bin\tailscale-android.apk'
+    if (Test-Path $tailscaleApk) { Remove-Item -LiteralPath $tailscaleApk -Force -ErrorAction SilentlyContinue }
     foreach ($junk in @('apk-out\classes', 'apk-out\dex', 'apk-out\gen', 'apk-out\compiled', 'apk-out\res.zip')) {
         $p = Join-Path $Target $junk
         if (Test-Path $p) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue }

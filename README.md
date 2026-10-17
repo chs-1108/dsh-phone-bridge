@@ -4,7 +4,7 @@
 
 <h1 align="center">📱 phone-bridge</h1>
 
-<p align="center"><strong>v1.1.0</strong></p>
+<p align="center"><strong>v1.1.2</strong></p>
 
 <p align="center">
   <em>用手机跟电脑上的 DSH 对话：发文字、拍照、传图，回复实时回显。不同 Wi-Fi 也能用。</em>
@@ -30,6 +30,30 @@
 > **No public server, no third-party relay.** The phone and the PC meet on a private WireGuard network that you create with your own Tailscale account. Nothing is exposed to the public internet.
 >
 > Node.js **≥18**. Android **7.0 (API 24)** or newer for the native app; any modern browser also works.
+
+## ⬇️ Download
+
+**[Releases → v1.1.2](https://github.com/chs-1108/dsh-phone-bridge/releases/tag/v1.1.2)**
+
+| File | Goes on | Size |
+| --- | --- | --- |
+| [`phone-bridge-1.1.2.apk`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-1.1.2.apk) | **phone** | 249 KB |
+| [`phone-bridge-plugin-1.1.0.zip`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-plugin-1.1.0.zip) | **PC** (DSH plugin) | 5 MB |
+
+Three steps:
+
+```powershell
+# 1. Install the plugin on the PC, then restart DSH
+dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge
+
+# 2. Install Tailscale on both sides and sign in
+#    PC https://tailscale.com/download   phone: Play Store
+
+# 3. Install the APK, open it, scan the QR in DSH -> Settings -> Phone Sync
+adb install -r phone-bridge-1.1.2.apk
+```
+
+The APK is a **generic build** with no baked-in address: every user scans their own PC's QR code and connects to their own PC.
 
 ## Contents
 
@@ -97,47 +121,65 @@ Everything else is automatic: install Tailscale, change the listen address, regi
 
 > Details in [安装说明.md](安装说明.md) (Chinese). Prefer a terminal? `install-gui.ps1 -Console`. Prefer the command line? Use the steps below.
 
-## How to get it
+## Download and install
 
-The whole path from nothing to a working phone, in order:
+Everything lives on one page: [**Releases → v1.1.2**](https://github.com/chs-1108/dsh-phone-bridge/releases/tag/v1.1.2)
 
-1. **Install the plugin** — `dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge`
-2. **Register it** — add `dsh-phone-bridge` to `dsh.profile.bundles`, restart DSH
-3. **Get the rest of the repo** — the deploy script, APK builder and docs are *not* in the npm package, so clone or download the ZIP if you want them
-4. **Run the deployer** — `.\setup-phone-bridge.ps1` handles Tailscale, the listen address and the APK
-5. **Phone side** — installed over USB by the script, or just open the URL in a browser
-
-> **The npm package and the repository are not the same file set.** `dsh plugin add github:` follows npm-pack semantics and ships only the `files` allowlist in `package.json` — `index.js`, `client.js`, `cordis.patch.yml`, `web`, `vendor`, `bin`. `setup-phone-bridge.ps1`, `build-apk.ps1`, `IMPLEMENTATION.md` and `SETUP.md` are not in it. To use the one-click deploy you need a clone.
-
-### Pick the option that matches what you want
-
-| You want | Do this | You get |
+| File | Goes on | Size |
 | --- | --- | --- |
-| **Plugin only**, phone in a browser | `dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge` | `index.js` `client.js` `web/` `vendor/` `cordis.patch.yml` |
-| **One-click deploy / build the APK** (recommended) | `git clone https://github.com/chs-1108/dsh-phone-bridge.git` | all 44 files |
-| **No git** | download the [ZIP](https://github.com/chs-1108/dsh-phone-bridge/archive/refs/heads/main.zip) | same as above |
+| `phone-bridge-1.1.2.apk` | the phone | 249 KB |
+| `phone-bridge-plugin-1.1.0.zip` | the PC (DSH plugin) | 5 MB |
 
-### Two large files are deliberately not in Git
+### On the PC
 
-| File | Size | Why it is absent | Who fetches it |
-| --- | --- | --- | --- |
-| `bin/tailscale-android.apk` | 100.6 MB | over GitHub's 100 MB per-file hard limit | **`setup-phone-bridge.ps1` downloads it from F-Droid** |
-| `bin/cloudflared.exe` | 52.8 MB | large and not required | only needed if you prefer a Cloudflare tunnel |
+```powershell
+# From GitHub
+dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge
 
-You do not have to do anything about the Tailscale APK — step 9 of the deploy script notices it is missing and fetches it (about 100 MB, once). You can also install Tailscale from the Play Store on the phone yourself and pass `-SkipPhone`.
+# Or from the downloaded zip
+dsh plugin --profile desktop add "D:\path\to\phone-bridge-plugin-1.1.0.zip"
+```
 
-`cloudflared.exe` is only for the alternative Cloudflare tunnel path instead of Tailscale. Get `cloudflared-windows-amd64.exe` from [cloudflared releases](https://github.com/cloudflare/cloudflared/releases), rename it to `cloudflared.exe`, drop it in `bin\`.
-
-### Confirm it loaded
+**Restart DSH**, then open **Settings → Phone Sync**. A QR code means it worked.
 
 ```bash
 curl http://127.0.0.1:19387/phone-bridge/health
 # {"ok":true,"name":"phone-bridge","version":1}
 ```
 
-That answer means the plugin is running; everything left is whether the phone can reach it.
+### On the phone
 
-## Install
+Install **Tailscale on both sides** and sign in (same account, or share the devices with each other). PC builds are at [tailscale.com/download](https://tailscale.com/download); the phone app is on the Play Store.
+
+```powershell
+adb install -r phone-bridge-1.1.2.apk
+```
+
+No cable? Copy the file over and tap it. Opening the app shows the pairing screen.
+
+### Pairing
+
+1. On the PC: **DSH → Settings → Phone Sync** — there is a QR code
+2. On the phone: tap **Scan the QR code on your PC**
+3. Tap **Connect** — from then on the app opens straight into the chat
+
+The QR code is generated on demand: it encodes this PC's Tailscale address plus a random token, recomputed every time the page loads. Nothing to configure.
+
+You can also type the two values by hand: the **pairing address** (`http://100.x.y.z:19387/phone-bridge`) and the **pairing token** shown on the same settings page.
+
+### Re-pairing with another PC
+
+In the app: **Settings → Clear pairing (scan again)**. That returns to the pairing screen; scan the new PC's code.
+
+### Using it
+
+Type in the box at the bottom (or tap **Camera / Gallery** to send a photo), then send. The reply streams back. **Sessions** at the top switches the target session; **Settings** toggles whether the reasoning stream is included.
+
+### Without the APK
+
+Open the pairing address in the phone's browser instead. Same features; photos go through the standard file picker.
+
+## Install (other ways)
 
 ### The standard way — `dsh plugin`
 
@@ -261,22 +303,35 @@ cat ~/.dsh/phone-bridge/state.json
 
 ## The phone side
 
-Three options, cheapest first.
+**Just install `phone-bridge-1.1.2.apk` from the release** - no build step needed.
 
-**Browser only** — install Tailscale on the phone, sign in with the same account, enable the VPN, open the URL. Photos work through the standard file picker.
+It opens on the pairing screen; scan the QR or type the two values. The pairing is stored on the phone, so later launches go straight to the chat.
 
-**Native APK** — build it with your own address baked in:
+The app runs a foreground service (partial wake lock plus a low-priority notification), so the screen going off or the app going to the background does not drop the connection. Tailscale runs as a background service on both sides too, so closing a window never drops the link and a reboot reconnects on its own.
+
+### Building the APK yourself
+
+Needs JDK 17 and the Android SDK (build-tools 34, platform 34):
+
+```powershell
+$env:PHONE_BRIDGE_JAVA_HOME = "C:\path\to\jdk-17"
+$env:PHONE_BRIDGE_SDK       = "C:\path\to\Android\Sdk"
+$env:PHONE_BRIDGE_BUILD_TOOLS = "34.0.0"
+pwsh -File build-apk.ps1
+# -> apk-out/phone-bridge.apk
+```
+
+With no arguments you get the **generic build**: each user scans their own PC's code. That is the one to publish.
+
+### Baked-in build (self-use only)
+
+To skip scanning while debugging, compile the address in:
 
 ```powershell
 .\build-apk.ps1 -BaseUrl "http://100.x.y.z:19387/phone-bridge" -Token "<your token>"
-adb install -r apk-out/phone-bridge.apk
 ```
 
-The app then skips the QR screen entirely. Build without `-BaseUrl` to get a generic APK that pairs by scanning the QR code shown in DSH settings.
-
-**QR pairing** — `build-apk.ps1` with no arguments, install, and scan the code from DSH → Settings → 手机同步.
-
-Tailscale runs as a background service on both sides, so closing the window does not drop the tunnel, and it reconnects automatically after a reboot.
+It opens straight into the chat, but it only ever connects to that one PC, so **do not publish it**. Clearing the pairing from inside the app still works and is not undone by the baked-in values.
 
 ## How it works
 

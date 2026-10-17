@@ -4,7 +4,7 @@
 
 <h1 align="center">📱 phone-bridge</h1>
 
-<p align="center"><strong>v1.1.0</strong></p>
+<p align="center"><strong>v1.1.2</strong></p>
 
 <p align="center">
   <em>用手机跟电脑上的 DSH 对话：发文字、拍照、传图，回复实时回显。不同 Wi-Fi 也能用。</em>
@@ -28,6 +28,30 @@
 > **官方 Web 版和官方桌面端都支持。** `dsh web` 用 profile `web`；官方桌面 EXE（DeepSeek Harness **0.2.0-rc.2**）用 profile `desktop`，两边分别安装、分别生效。
 >
 > **没有公网服务器，没有第三方中转。** 手机和电脑在你的 Tailscale 账号所建的 WireGuard 私有网络里会合，不向公网暴露任何东西。
+
+## ⬇️ 下载
+
+**[Releases → v1.1.2](https://github.com/chs-1108/dsh-phone-bridge/releases/tag/v1.1.2)**
+
+| 文件 | 装在哪 | 大小 |
+| --- | --- | --- |
+| [`phone-bridge-1.1.2.apk`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-1.1.2.apk) | **手机** | 249 KB |
+| [`phone-bridge-plugin-1.1.0.zip`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-plugin-1.1.0.zip) | **电脑**（DSH 插件） | 5 MB |
+
+三步上手：
+
+```powershell
+# 1. 电脑装插件（然后重启 DSH）
+dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge
+
+# 2. 两端装 Tailscale 并登录（同一账号，或互相 share 设备）
+#    电脑 https://tailscale.com/download  手机 Play Store
+
+# 3. 手机装 APK，打开 → 扫 DSH「设置 → 手机同步」里的二维码
+adb install -r phone-bridge-1.1.2.apk
+```
+
+APK 是**通用包**，不含任何写死的地址 —— 每个用户扫自己电脑的码，连自己的电脑。
 >
 > Node.js **≥18**。原生 App 需要 Android **7.0（API 24）** 以上；任意现代浏览器也能用。
 
@@ -97,40 +121,72 @@ DSH webServer  ──▶  /phone-bridge 前缀路由  ──▶  sessionControll
 
 > 详细说明见 [安装说明.md](安装说明.md)。不想用图形界面就 `install-gui.ps1 -Console`，或走下面的命令行流程。
 
-## 下载与安装的完整流程
+## 下载与安装
 
-从零到手机能用的全部步骤，按顺序：
+全部东西在同一个页面：[**Releases → v1.1.2**](https://github.com/chs-1108/dsh-phone-bridge/releases/tag/v1.1.2)
 
-```dsh-ui
-{"title":"五步","gap":14,"items":[{"type":"steps","steps":[{"title":"1. 装插件本体","desc":"dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge"},{"title":"2. 注册到 profile","desc":"dsh.profile.bundles 加 dsh-phone-bridge，重启 DSH"},{"title":"3. 获取仓库其余文件","desc":"setup 脚本、APK 构建、文档不在 npm 包里，需要 git clone 或下 ZIP"},{"title":"4. 跑一键部署","desc":"setup-phone-bridge.ps1，自动装 Tailscale、改监听、构建 APK"},{"title":"5. 手机端","desc":"USB 自动推装，或浏览器直接开 URL"}]},{"type":"callout","tone":"warning","title":"关键：npm 包和仓库不是同一套文件","content":"`dsh plugin add github:` 走 npm pack 语义，只拿 `package.json` 的 `files` 白名单（index.js、client.js、cordis.patch.yml、web、vendor、bin）。setup 脚本、build-apk.ps1、IMPLEMENTATION.md、SETUP.md 都不在里面 —— 想用一键部署，必须先 clone 仓库。"}]}
+| 文件 | 装在哪 | 大小 |
+| --- | --- | --- |
+| `phone-bridge-1.1.2.apk` | 手机 | 249 KB |
+| `phone-bridge-plugin-1.1.0.zip` | 电脑（DSH 插件） | 5 MB |
+
+### 装到电脑
+
+```powershell
+# 方式一：从 GitHub 直接装
+dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge
+
+# 方式二：下 zip 解开后本地装
+dsh plugin --profile desktop add "D:\path\to\phone-bridge-plugin-1.1.0.zip"
 ```
 
-### 三种获取方式，按需求选
+装完**重启 DSH**，然后在 DSH 里打开「设置 → 手机同步」。能看到二维码就是成了。
 
-| 你想要什么 | 怎么做 | 拿到什么 |
-| --- | --- | --- |
-| **只装插件**，手机用浏览器 | `dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge` | `index.js` `client.js` `web/` `vendor/` `cordis.patch.yml` |
-| **要一键部署 / 构建 APK**（推荐） | `git clone https://github.com/chs-1108/dsh-phone-bridge.git` | 全部 44 个文件 |
-| **不想装 git** | 下 [ZIP](https://github.com/chs-1108/dsh-phone-bridge/archive/refs/heads/main.zip) 解压 | 同上 |
-
-### 仓库里的大文件不在 Git 中
-
-| 文件 | 大小 | 为什么不在 | 谁负责取 |
-| --- | --- | --- | --- |
-| `bin/tailscale-android.apk` | 100.6 MB | 超 GitHub 单文件 100 MB 硬限制 | **`setup-phone-bridge.ps1` 自动从 F-Droid 下载** |
-
-`tailscale-android.apk` 不用管 —— 脚本第 9 步检测到缺失就会自己下载（约 100 MB，一次性）。也可以自己在手机上装 Play Store 版 Tailscale，然后加 `-SkipPhone`。
-
-### 装完之后验证
+验证命令行也行：
 
 ```bash
 curl http://127.0.0.1:19387/phone-bridge/health
 # {"ok":true,"name":"phone-bridge","version":1}
 ```
 
-返回这个就说明插件跑起来了，剩下的只是手机能不能连到它。
+### 装到手机
 
-## 安装
+**两端都装 Tailscale 并登录**（电脑装 [官网版](https://tailscale.com/download)，手机装 Play Store 版），登录同一个账号或互相 share 设备。
+
+然后：
+
+```powershell
+adb install -r phone-bridge-1.1.2.apk
+```
+
+没有数据线就传到手机点安装。打开 App 会看到配对页。
+
+### 配对
+
+```dsh-ui
+{"title":"配对只做一次","gap":12,"items":[{"type":"steps","steps":[{"title":"电脑打开 DSH → 设置 → 手机同步","desc":"那里有一个二维码"},{"title":"手机 App 点「扫描电脑上的二维码」","desc":"扫描后地址和密钥自动填入"},{"title":"点「连接」","desc":"之后打开 App 直接就是聊天界面"}]},{"type":"callout","tone":"info","title":"二维码是自动生成的","content":"每次打开设置页都按当前状态实时算：本机 Tailscale 地址 + 随机 token。换电脑、换网络、token 变了，二维码自动跟着变，不需要你配置任何东西。"}]}
+```
+
+**手填也行**，配对页有两个输入框：
+
+| 字段 | 从哪抄 |
+| --- | --- |
+| 配对地址 | 设置页上的 `http://100.x.y.z:19387/phone-bridge` |
+| 配对密钥 | 设置页上的 token（一长串十六进制） |
+
+### 换电脑或重新配对
+
+App 内 → **设置 → 清除配对（重新扫码）**，会回到配对页，重新扫新电脑的码即可。
+
+### 用起来
+
+配对完成后，在 App 底部输入框打字（或点「拍照 / 相册」发图），点发送。回复会流式返回。点顶部「会话」可以切换目标会话，「设置」里可以调是否返回思考过程。
+
+### 如果不想用 APK
+
+手机浏览器直接打开配对地址也行，功能完全一样，只是发照片走标准的文件选择器。
+
+## 安装（其余方式）
 
 ### 标准方式 —— `dsh plugin`
 
@@ -254,34 +310,37 @@ cat ~/.dsh/phone-bridge/state.json
 
 ## 手机端
 
-三种方式，从省事到完整。
+**装 Release 里的 `phone-bridge-1.1.2.apk` 就行**，不用自己构建。
 
-**纯浏览器** —— 手机装 Tailscale，登同一个账号，开启 VPN，打开 URL。照片走标准文件选择器。
+打开 App 是配对页，扫码或手填（见上面的「配对」）。配对信息存在手机本地，之后直接进聊天界面。
 
-**通用 APK（发给别人用这个）** —— 无参数构建，每个用户连自己的电脑：
+App 自带前台服务（持有 wake lock + 常驻通知），息屏和切后台都不会断连。Tailscale 在两端也是后台服务，关掉窗口不断线，重启自动连回来。
+
+### 自己构建 APK
+
+需要 JDK 17 和 Android SDK（build-tools 34 + platform 34）：
 
 ```powershell
+$env:PHONE_BRIDGE_JAVA_HOME = "C:\path\to\jdk-17"
+$env:PHONE_BRIDGE_SDK       = "C:\path\to\Android\Sdk"
+$env:PHONE_BRIDGE_BUILD_TOOLS = "34.0.0"
 pwsh -File build-apk.ps1
-adb install -r apk-out/phone-bridge.apk
+# -> apk-out/phone-bridge.apk
 ```
 
-安装后打开，出现配对页。两种填法：
+不带参数构建出来的是**通用包**，每个用户扫码连自己的电脑。要发布就发这种。
 
-- **扫码** —— 点「扫描二维码」，扫电脑上 DSH → 设置 → 手机同步里显示的码
-- **手填** —— 直接粘贴那页上的地址和密钥
+### 预配对构建（仅自用）
 
-配对信息存在手机本地，换电脑时进 App 的「设置 → 清除配对（重新扫码）」重来一次即可。
-
-**预配对 APK（只给自己用）** —— 把自己的地址烘进去，打开就是主界面，完全跳过配对：
+调试时懒得每次扫码，可以把地址烘进去：
 
 ```powershell
 .\build-apk.ps1 -BaseUrl "http://100.x.y.z:19387/phone-bridge" -Token "<你的 token>"
-adb install -r apk-out/phone-bridge.apk
 ```
 
-烘进去的包只能连这一台电脑，换机器必须重新构建——所以不要发布这种包。
+打开就是主界面。但烘进去的包只能连这一台电脑，换机器必须重编 —— **不要发布这种包**。
 
-Tailscale 在两端都是后台服务，关掉窗口不会断隧道，重启后也会自动连回来。手机端 App 自带前台服务，息屏和切后台都不会断连。
+配对信息仍可通过 App 内「设置 → 清除配对」解除，解除后不会再被烘入值粘回去。
 
 ## 实现原理
 
