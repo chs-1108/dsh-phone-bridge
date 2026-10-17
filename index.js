@@ -559,6 +559,25 @@ class Bridge {
     return this.state.sessionId
   }
 
+  /**
+   * True when this session already has a turn in flight that the bridge did not
+   * start.
+   *
+   * Stream frames carry no turn number, so if the phone shares a session with
+   * whatever the desktop is doing, the phone's job cannot tell its own answer
+   * from the other turn's output and ends up showing that instead. Refusing to
+   * send into a busy session keeps the two apart.
+   */
+  async sessionIsBusy(sessionId, signal) {
+    try {
+      const summary = await this.ctx.sessionController.inspect(sessionId, signal)
+      return Boolean(summary && summary.running)
+    } catch {
+      // Cannot tell: let the send through rather than blocking a working setup.
+      return false
+    }
+  }
+
   prune() {
     const now = Date.now()
     for (const [id, job] of this.jobs) {
@@ -915,6 +934,16 @@ class Bridge {
     this.queue.push(job.id)
 
     const sessionId = await this.ensureSession()
+    // A turn already running in this session means the job below would receive
+    // that turn's output as its own answer. Report it instead of silently showing
+    // the wrong text; the phone can retry once the session is idle.
+    if (await this.sessionIsBusy(sessionId, new AbortController().signal)) {
+      this.jobs.delete(job.id)
+      this.queue = this.queue.filter((id) => id !== job.id)
+      const err = new Error('会话正忙：请等这一轮结束后再发，或换一个会话')
+      err.status = 409
+      throw err
+    }
     this.ensureFollower(sessionId)
 
     try {

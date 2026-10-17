@@ -1,7 +1,24 @@
 // Standalone harness: mounts the Host half with a stub ctx and exercises the
 // HTTP routes over a real socket. Verifies the module without restarting DSH.
+import fs from 'node:fs'
 import http from 'node:http'
-import { apply } from '../index.js'
+import os from 'node:os'
+import path from 'node:path'
+
+// Redirect the module's state directory before importing it. index.js writes
+// state.json on boot and after every prefs change, so without this the harness
+// overwrote the token and session binding of the live installation.
+const sandboxHome = fs.mkdtempSync(path.join(os.tmpdir(), 'phone-bridge-test-'))
+process.env.DSH_HOME = sandboxHome
+process.on('exit', () => {
+  try {
+    fs.rmSync(sandboxHome, { recursive: true, force: true })
+  } catch {
+    // best effort; a leftover temp dir is harmless
+  }
+})
+
+const { apply } = await import('../index.js')
 
 const routes = []
 const effects = []
