@@ -68,7 +68,7 @@ final class BridgeConfig {
 
     /**
      * Normalizes whatever the user scanned or typed into a base URL ending at the
-     * bridge route prefix, e.g. {@code https://x.trycloudflare.com/phone-bridge}.
+     * bridge route prefix, e.g. {@code http://100.101.102.103:19387/phone-bridge}.
      */
     static String normalizeBase(String raw) {
         if (raw == null) {

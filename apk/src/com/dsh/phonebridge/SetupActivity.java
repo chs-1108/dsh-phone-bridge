@@ -51,8 +51,9 @@ public final class SetupActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         root.addView(title("DSH 手机同步"));
-        root.addView(note("在电脑端的 DSH 里打开「设置 → 手机同步」，启动隧道后用下面的按钮扫描二维码。"
-                + "手机和电脑可以在不同的 Wi-Fi 下。"));
+        root.addView(note("先在这台手机和电脑上都装好 Tailscale 并登录，然后在电脑端的 DSH 里打开"
+                + "「设置 → 手机同步」，用下面的按钮扫描那里的二维码。"
+                + "两端不用连同一个 Wi-Fi。"));
         root.addView(space(6));
 
         Button scan = new Button(this);
@@ -69,7 +70,7 @@ public final class SetupActivity extends Activity {
         root.addView(space(12));
         root.addView(label("配对地址"));
         urlField = new EditText(this);
-        urlField.setHint("https://xxxx.trycloudflare.com/phone-bridge");
+        urlField.setHint("http://100.x.y.z:19387/phone-bridge");
         urlField.setInputType(InputType.TYPE_TEXT_VARIATION_URI | InputType.TYPE_CLASS_TEXT);
         urlField.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         root.addView(urlField);
