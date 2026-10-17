@@ -36,6 +36,7 @@
 - [What this is](#what-this-is)
 - [Highlights](#highlights)
 - [Requirements](#requirements)
+- [Fastest way: double-click](#fastest-way-double-click)
 - [How to get it](#how-to-get-it)
 - [Install](#install)
 - [Manual install](#manual-install)
@@ -82,6 +83,19 @@ It consumes only DSH's public `webServer` and `sessionController` services. No c
 | **Account** | Your own free [Tailscale](https://login.tailscale.com/start) account |
 
 Optional, only for building the APK: JDK 17 and Android SDK build-tools 34.0.0. Optional, only for pushing to a phone over USB: `adb`.
+
+## Fastest way: double-click
+
+Download the repository, then double-click **`install.cmd`**. A window opens; follow it.
+
+Only two things need you:
+
+1. **Sign in to Tailscale** - a browser opens, use your own account
+2. **Plug in the phone by USB** - tap Allow when it asks for debugging authorisation
+
+Everything else is automatic: install Tailscale, change the listen address, register the plugin, create the pairing key, detect the port, build the APK, push and install it, grant the camera permission, run the health check.
+
+> Details in [安装说明.md](安装说明.md) (Chinese). Prefer a terminal? `install-gui.ps1 -Console`. Prefer the command line? Use the steps below.
 
 ## How to get it
 
