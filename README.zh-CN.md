@@ -36,7 +36,7 @@
 - [这是什么](#这是什么)
 - [亮点](#亮点)
 - [环境要求](#环境要求)
-- [快速开始](#快速开始)
+- [安装](#安装)
 - [手动安装](#手动安装)
 - [手机端](#手机端)
 - [实现原理](#实现原理)
@@ -82,9 +82,52 @@ DSH webServer  ──▶  /phone-bridge 前缀路由  ──▶  sessionControll
 
 可选，仅构建 APK 时需要：JDK 17 和 Android SDK build-tools 34.0.0。可选，仅 USB 推送到手机时需要：`adb`。
 
-## 快速开始
+## 安装
 
-电脑上，**管理员** PowerShell：
+### 标准方式 —— `dsh plugin`
+
+DSH 自带插件子命令，会把参数原样转发给 profile 目录里的 `pnpm`。这是所有第三方插件的官方安装路径，本插件同样适用：
+
+```bash
+# 桌面端（DeepSeek Harness 0.2.0-rc.2）
+dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge
+
+# 官方 Web 版
+dsh plugin --profile web add github:chs-1108/dsh-phone-bridge
+```
+
+已经有本地克隆的话，直接指目录：
+
+```bash
+dsh plugin --profile desktop add /path/to/dsh-phone-bridge
+```
+
+然后把包名追加到 profile `package.json` 的 `dsh.profile.bundles`，重启 DSH：
+
+```json
+{
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dsh-phone-bridge"
+      ]
+    }
+  }
+}
+```
+
+确认加载成功：
+
+```bash
+curl http://127.0.0.1:19387/phone-bridge/health
+# {"ok":true,"name":"phone-bridge","version":1}
+```
+
+### 一键部署
+
+插件装好后，剩下的环境由 `setup-phone-bridge.ps1` 全包 —— Tailscale、监听地址、APK、以及通过 USB 推到手机。电脑上，**管理员** PowerShell：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
@@ -120,14 +163,14 @@ http://100.x.y.z:19387/phone-bridge/?token=<48 位十六进制>
 
 ## 手动安装
 
-想自己接线的话：
+你的 DSH 构建里没有 `dsh plugin` 的话，可以自己接线：
 
 **1. 把插件放到 DSH 能找到的位置**
 
 ```bash
 git clone https://github.com/chs-1108/dsh-phone-bridge.git
 mkdir -p ~/.dsh/phone-bridge
-cp -r phone-bridge/{index.js,client.js,package.json,cordis.patch.yml,web,vendor} ~/.dsh/phone-bridge/
+cp -r dsh-phone-bridge/{index.js,client.js,package.json,cordis.patch.yml,web,vendor} ~/.dsh/phone-bridge/
 ```
 
 **2. 在 profile 里注册**

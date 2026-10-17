@@ -20,6 +20,14 @@
     "phone",
     "tunnel"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chs-1108/dsh-phone-bridge.git"
+  },
+  "homepage": "https://github.com/chs-1108/dsh-phone-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/chs-1108/dsh-phone-bridge/issues"
+  },
   "license": "MIT",
   "dsh": {
     "bundle": {

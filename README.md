@@ -36,7 +36,7 @@
 - [What this is](#what-this-is)
 - [Highlights](#highlights)
 - [Requirements](#requirements)
-- [Quick start](#quick-start)
+- [Install](#install)
 - [Manual install](#manual-install)
 - [The phone side](#the-phone-side)
 - [How it works](#how-it-works)
@@ -82,16 +82,59 @@ It consumes only DSH's public `webServer` and `sessionController` services. No c
 
 Optional, only for building the APK: JDK 17 and Android SDK build-tools 34.0.0. Optional, only for pushing to a phone over USB: `adb`.
 
-## Quick start
+## Install
 
-On the PC, in an **elevated** PowerShell:
+### The standard way — `dsh plugin`
+
+DSH ships a plugin subcommand that forwards its arguments to `pnpm` inside the profile directory. That is the supported install path for every third-party plugin, this one included:
+
+```bash
+# Desktop app (DeepSeek Harness 0.2.0-rc.2)
+dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge
+
+# Official web build
+dsh plugin --profile web add github:chs-1108/dsh-phone-bridge
+```
+
+Add it from a local clone instead, if you already have one:
+
+```bash
+dsh plugin --profile desktop add /path/to/dsh-phone-bridge
+```
+
+Then append the bundle name to `dsh.profile.bundles` in the profile's `package.json`, and restart DSH:
+
+```json
+{
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dsh-phone-bridge"
+      ]
+    }
+  }
+}
+```
+
+Confirm it loaded:
+
+```bash
+curl http://127.0.0.1:19387/phone-bridge/health
+# {"ok":true,"name":"phone-bridge","version":1}
+```
+
+### One-click deploy
+
+Once the plugin is in, `setup-phone-bridge.ps1` does the rest of the environment — Tailscale, the listen address, the APK, and the phone over USB. On the PC, in an **elevated** PowerShell:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\setup-phone-bridge.ps1
 ```
 
-The script walks nine steps and stops to ask you only twice:
+It walks nine steps and stops to ask you only twice:
 
 1. Sign in to your Tailscale account (a browser opens).
 2. Confirm restarting DSH so the plugin loads.
@@ -120,14 +163,14 @@ Open it on the phone, or launch the installed **DSH 手机同步** app — it is
 
 ## Manual install
 
-If you would rather wire it up by hand:
+If `dsh plugin` is not available in your build, wire it up by hand:
 
 **1. Put the plugin where DSH can find it**
 
 ```bash
 git clone https://github.com/chs-1108/dsh-phone-bridge.git
 mkdir -p ~/.dsh/phone-bridge
-cp -r phone-bridge/{index.js,client.js,package.json,cordis.patch.yml,web,vendor} ~/.dsh/phone-bridge/
+cp -r dsh-phone-bridge/{index.js,client.js,package.json,cordis.patch.yml,web,vendor} ~/.dsh/phone-bridge/
 ```
 
 **2. Register it in the profile**
