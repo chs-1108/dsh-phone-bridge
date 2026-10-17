@@ -24,6 +24,8 @@ export const inject = ['webServer', 'sessionController']
 
 const require = createRequire(import.meta.url)
 const ROUTE_PREFIX = '/phone-bridge'
+/** How many finished jobs survive in jobs.json for a phone that polls late. */
+const JOB_PERSIST_MAX = 50
 const LOG = (ctx, level, msg) => {
   try {
     const logger = ctx && ctx.logger
@@ -66,6 +68,86 @@ function saveState(state) {
     const dir = stateDir()
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(state, null, 2), 'utf8')
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Finished jobs are mirrored here so a phone that was polling when DSH restarted
+ * can still collect its answer. Jobs live in memory only during a turn; without
+ * this a restart makes every outstanding job id answer 404 and the reply the
+ * user was waiting for is gone for good.
+ */
+function jobsFile() {
+  return path.join(stateDir(), 'jobs.json')
+}
+
+function loadJobs() {
+  let raw = null
+  try {
+    raw = JSON.parse(fs.readFileSync(jobsFile(), 'utf8'))
+  } catch {
+    return []
+  }
+  if (!Array.isArray(raw)) return []
+  const out = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    if (typeof item.id !== 'string' || item.id === '') continue
+    // A job that was mid-flight when the process died can never finish now.
+    const status = item.status === 'done' || item.status === 'error' ? item.status : 'error'
+    const job = {
+      id: item.id,
+      requestId: typeof item.requestId === 'string' ? item.requestId : '',
+      status,
+      turn: typeof item.turn === 'number' ? item.turn : null,
+      showThinking: item.showThinking === true,
+      liveText: '',
+      liveReasoning: '',
+      committedText: typeof item.committedText === 'string' ? item.committedText : '',
+      committedReasoning: typeof item.committedReasoning === 'string' ? item.committedReasoning : '',
+      final: typeof item.final === 'string' ? item.final : '',
+      reasoning: typeof item.reasoning === 'string' ? item.reasoning : '',
+      error:
+        status === 'error'
+          ? typeof item.error === 'string' && item.error
+            ? item.error
+            : 'DSH 重启时这一轮还没结束'
+          : null,
+      createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+      updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : Date.now(),
+    }
+    out.push(job)
+  }
+  return out
+}
+
+function saveJobs(jobs) {
+  try {
+    const dir = stateDir()
+    fs.mkdirSync(dir, { recursive: true })
+    const keep = []
+    for (const job of jobs.values()) {
+      if (job.status === 'queued' || job.status === 'running') continue
+      keep.push({
+        id: job.id,
+        requestId: job.requestId,
+        status: job.status,
+        turn: job.turn,
+        showThinking: job.showThinking,
+        committedText: job.committedText,
+        committedReasoning: job.committedReasoning,
+        final: job.final,
+        reasoning: job.reasoning,
+        error: job.error,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+      })
+    }
+    keep.sort((a, b) => a.updatedAt - b.updatedAt)
+    const capped = keep.slice(-JOB_PERSIST_MAX)
+    fs.writeFileSync(jobsFile(), JSON.stringify(capped, null, 2), 'utf8')
   } catch {
     /* ignore */
   }
@@ -452,6 +534,9 @@ class Bridge {
     this.follower = null
     this.followAbort = null
     this.tunnel = new Tunnel(() => this.ctx, state)
+    // Restore the answers that were already produced, so a phone polling across
+    // a DSH restart still gets the reply it was waiting for.
+    for (const job of loadJobs()) this.jobs.set(job.id, job)
   }
 
   /* ---- session ---- */
@@ -497,7 +582,22 @@ class Bridge {
     this.followAbort = controller
     const entry = { sessionId, started: Date.now() }
     this.follower = entry
+    this.followLoop(sessionId, controller, entry, 0)
+  }
+
+  /**
+   * Consume the follow stream until it ends, then reconnect while the session is
+   * still the one being followed and jobs are outstanding.
+   *
+   * A follow stream is a subscription, not a one-shot request: it can end when
+   * the turn commits, and it dies silently if the session is busy. Without this
+   * retry the plugin stops observing the session after the first stream ends and
+   * every later reply is invisible to the phone - the symptom being that
+   * messages arrive but answers never come back.
+   */
+  followLoop(sessionId, controller, entry, attempt) {
     ;(async () => {
+      let ended = false
       try {
         const stream = this.ctx.sessionController.follow(
           { address: { kind: 'session', sessionId }, assistantStream: true },
@@ -506,15 +606,54 @@ class Bridge {
         for await (const frame of stream) {
           this.onFrame(frame)
         }
-        LOG(this.ctx, 'info', 'follow stream ended')
+        ended = true
       } catch (err) {
         if (!controller.signal.aborted) {
           LOG(this.ctx, 'warn', `follow failed: ${String((err && err.message) || err)}`)
         }
-      } finally {
-        if (this.follower === entry) this.follower = null
       }
+      // Every guard below must agree before resubscribing, or two loops end up
+      // consuming the same session and a frame is applied twice.
+      if (controller.signal.aborted) return
+      if (this.follower !== entry) return
+      if (controller !== this.followAbort) return
+      if (this.follower.sessionId !== sessionId) return
+      // Only stay subscribed while something is actually outstanding. A tail
+      // that reconnects on an idle session just replays finished turns.
+      if (!this.hasPendingWork()) {
+        if (this.follower === entry) this.follower = null
+        return
+      }
+      if (attempt >= 40) {
+        LOG(this.ctx, 'warn', `follow gave up after ${attempt} attempts`)
+        if (this.follower === entry) this.follower = null
+        return
+      }
+      if (ended) LOG(this.ctx, 'info', 'follow stream ended; resubscribing')
+      const wait = Math.min(200 * (attempt + 1), 3000)
+      const timer = setTimeout(() => {
+        if (controller.signal.aborted || this.follower !== entry) return
+        if (controller !== this.followAbort) return
+        this.followLoop(sessionId, controller, entry, attempt + 1)
+      }, wait)
+      if (typeof timer.unref === 'function') timer.unref()
     })()
+  }
+
+  /** True while at least one queued or in-flight job still needs the stream. */
+  hasPendingWork() {
+    for (const job of this.jobs.values()) {
+      if (job.status === 'queued' || job.status === 'running') return true
+    }
+    return false
+  }
+
+  /** True while a job is waiting to be attached to a turn. */
+  hasQueuedJob() {
+    for (const job of this.jobs.values()) {
+      if (job.status === 'queued') return true
+    }
+    return false
   }
 
   stopFollower() {
@@ -529,11 +668,51 @@ class Bridge {
     this.follower = null
   }
 
-  runningJob() {
+  /**
+   * The job that owns the turn currently in flight.
+   *
+   * Several jobs can be queued at once, and a turn event is not addressed to any
+   * of them, so the match has to be precise: prefer the job already bound to
+   * this turn number, otherwise the oldest unbound job. Returning the first
+   * `running` job in insertion order instead would pin every later turn to the
+   * oldest job forever, and the newer ones would never leave `running`.
+   */
+  runningJob(turn) {
+    if (typeof turn === 'number') {
+      for (const job of this.jobs.values()) {
+        if (job.status === 'running' && job.turn === turn) return job
+      }
+    }
     for (const job of this.jobs.values()) {
-      if (job.status === 'running') return job
+      if (job.status === 'running' && job.turn === null) return job
+    }
+    if (typeof turn === 'number') {
+      for (const job of this.jobs.values()) {
+        if (job.status === 'running') return job
+      }
     }
     return null
+  }
+
+  /**
+   * Bind the next queued job to a turn. Kept separate from runningJob so that a
+   * turn/end that arrives without a preceding turn/start still resolves, and so
+   * that two turns can never bind to the same job.
+   */
+  claimTurn(turn) {
+    const id = this.queue.shift()
+    const job = id ? this.jobs.get(id) : null
+    if (!job || job.status !== 'queued') return null
+    job.status = 'running'
+    job.turn = typeof turn === 'number' ? turn : null
+    job.liveText = ''
+    job.liveReasoning = ''
+    job.committedText = ''
+    job.committedReasoning = ''
+    job.final = ''
+    job.reasoning = ''
+    job.updatedAt = Date.now()
+    return job
   }
 
   onFrame(frame) {
@@ -576,25 +755,20 @@ class Bridge {
     switch (event.type) {
       case 'turn/start': {
         if (typeof data.turn === 'number') {
-          const id = this.queue.shift()
-          const job = id ? this.jobs.get(id) : null
-          if (job && job.status === 'queued') {
-            job.status = 'running'
-            job.turn = data.turn
-            job.liveText = ''
-            job.liveReasoning = ''
-            job.committedText = ''
-            job.committedReasoning = ''
-            job.final = ''
-            job.reasoning = ''
-            job.updatedAt = Date.now()
-            LOG(this.ctx, 'info', `job ${job.id} -> turn ${data.turn}`)
+          // A resubscribed stream can deliver a turn again. Bind it only if some
+          // job is still waiting for one; otherwise this is a replay of work that
+          // already settled and must be ignored.
+          if (!this.hasQueuedJob()) {
+            LOG(this.ctx, 'info', `turn ${data.turn} arrived with nothing queued; ignoring`)
+            return
           }
+          const job = this.claimTurn(data.turn)
+          if (job) LOG(this.ctx, 'info', `job ${job.id} -> turn ${data.turn}`)
         }
         return
       }
       case 'assistant/message': {
-        const job = this.runningJob()
+        const job = this.runningJob(data.turn)
         if (!job) return
         if (job.turn !== null && typeof data.turn === 'number' && data.turn !== job.turn) return
         const blocks = blocksOf(data.message)
@@ -625,7 +799,7 @@ class Bridge {
         return
       }
       case 'turn/end': {
-        const job = this.runningJob()
+        const job = this.runningJob(data.turn)
         if (!job) return
         if (job.turn !== null && typeof data.turn === 'number' && data.turn !== job.turn) return
         const reason = data.reason
@@ -660,6 +834,7 @@ class Bridge {
         }
         job.updatedAt = Date.now()
         LOG(this.ctx, 'info', `job ${job.id} -> ${job.status}`)
+        saveJobs(this.jobs)
         return
       }
       default:
