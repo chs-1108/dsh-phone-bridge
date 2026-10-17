@@ -1023,12 +1023,32 @@ export function apply(ctx, config) {
    * encoded an empty string, so scanning it paired the app with nothing. Fall
    * back to this machine's reachable IPv4 addresses instead.
    */
+  /**
+   * The address the phone should pair with.
+   *
+   * A running tunnel is preferred because it works from any network, but it also
+   * puts the bridge on a public URL. Tailscale already connects the two devices
+   * privately and works across networks too, so when a 100.64/10 address exists
+   * that is the better answer and the tunnel is only the fallback.
+   */
   const pairBase = () => {
-    if (state.lastTunnelUrl) return state.lastTunnelUrl
     const port = webServerPort()
     const hosts = reachableAddresses()
-    if (hosts.length === 0) return ''
-    return `http://${hosts[0]}:${port}`
+    if (hosts.length > 0) return `http://${hosts[0]}:${port}`
+    if (state.lastTunnelUrl) return state.lastTunnelUrl
+    return ''
+  }
+
+  /** Every address the phone could pair with, so the UI can offer a choice. */
+  const pairCandidates = () => {
+    const port = webServerPort()
+    const list = reachableAddresses().map((host) => ({
+      url: `http://${host}:${port}`,
+      kind: /^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\./.test(host) ? 'tailscale' : 'lan',
+      host,
+    }))
+    if (state.lastTunnelUrl) list.push({ url: state.lastTunnelUrl, kind: 'tunnel', host: '' })
+    return list
   }
 
   const pairUrl = () => {
@@ -1042,6 +1062,7 @@ export function apply(ctx, config) {
     version: 1,
     tunnel: bridge.tunnel.snapshot(),
     pairUrl: pairUrl(),
+    pairCandidates: pairCandidates(),
     sessionId: state.sessionId,
     cwd: state.cwd || process.cwd(),
     defaultShowThinking: state.defaultShowThinking,
@@ -1108,7 +1129,12 @@ export function apply(ctx, config) {
       }
 
       if (pathname === `${ROUTE_PREFIX}/api/pair` && method === 'GET') {
-        return sendJson(res, 200, { ok: true, pairUrl: pairUrl(), token: state.token })
+        return sendJson(res, 200, {
+          ok: true,
+          pairUrl: pairUrl(),
+          pairCandidates: pairCandidates(),
+          token: state.token,
+        })
       }
 
       if (pathname === `${ROUTE_PREFIX}/api/tunnel` && method === 'POST') {
