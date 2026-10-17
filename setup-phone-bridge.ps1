@@ -120,21 +120,23 @@ function Invoke-Adb {
 
 function Find-Tailscale {
     $candidates = @(
+        $env:PHONE_BRIDGE_TAILSCALE,
         (Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'),
-        (Join-Path ${env:ProgramFiles(x86)} 'Tailscale\tailscale.exe'),
-        'D:\bian_cheng_ruan_jian\Tailscale\tailscale.exe'
+        (Join-Path ${env:ProgramFiles(x86)} 'Tailscale\tailscale.exe')
     )
     foreach ($c in $candidates) {
         if ($c -and (Test-Path $c)) { return $c }
     }
+    $cmd = Get-Command tailscale -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
     return $null
 }
 
 function Find-Adb {
     $candidates = @(
         $env:PHONE_BRIDGE_ADB,
-        'D:\bian_cheng_ruan_jian\platform-tools\adb.exe',
-        (Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe')
+        (Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe'),
+        (Join-Path $env:ProgramFiles 'Android\platform-tools\adb.exe')
     )
     foreach ($c in $candidates) {
         if ($c -and (Test-Path $c)) { return $c }
@@ -332,6 +334,9 @@ $patchFile = Join-Path $profileDir 'cordis.patch.yml'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 if (Test-Path $patchFile) {
+    # Keep one backup, not one per run.
+    Get-ChildItem $profileDir -File -Filter 'cordis.patch.yml.bak-*' -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
     Copy-Item $patchFile ($patchFile + '.bak-' + $stamp) -Force
     Write-Info ("backup: cordis.patch.yml.bak-" + $stamp)
 }
@@ -349,7 +354,12 @@ else {
 }
 
 if ($patchText -match '(?m)^\s*-\s*id:\s*webserver\s*$') {
-    if ($patchText -match "host:\s*'?0\.0\.0\.0'?") {
+    # Match only within the webserver row's own block: from its "- id: webserver"
+    # line up to the next top-level "- id:" line. A whole-file match would let any
+    # other plugin's host: 0.0.0.0 answer for this one.
+    $rowPattern = '(?ms)^\s*-\s*id:\s*webserver\s*$.*?(?=^\s*-\s*id:\s*|\z)'
+    $webRow = [regex]::Match($patchText, $rowPattern)
+    if ($webRow.Success -and $webRow.Value -match "host:\s*'?0\.0\.0\.0'?") {
         Write-Ok "webServer already at 0.0.0.0"
     }
     else {
@@ -384,6 +394,10 @@ Write-Step "Install phone-bridge plugin"
 
 $pluginTarget = Join-Path $dshHome 'phone-bridge'
 if (Test-Path $pluginTarget) {
+    # Keep exactly one previous copy: repeated runs would otherwise pile up
+    # timestamped backup trees and quietly eat disk space.
+    Get-ChildItem $dshHome -Directory -Filter 'phone-bridge.bak-*' -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     $bak = $pluginTarget + '.bak-' + $stamp
     Copy-Item $pluginTarget $bak -Recurse -Force -ErrorAction SilentlyContinue
     Write-Info ("backup: " + $bak)
@@ -495,21 +509,30 @@ if ($SkipApk) {
 }
 else {
     $jdk = $null
-    foreach ($c in @(
-            $env:PHONE_BRIDGE_JAVA_HOME,
-            'D:\bian_cheng_ruan_jian\jabba\jdk\zulu@17.0.9',
-            (Join-Path $env:ProgramFiles 'Zulu\zulu-17'),
-            (Join-Path $env:ProgramFiles 'Eclipse Adoptium\jdk-17')
-        )) {
-        if ($c -and (Test-Path $c)) { $jdk = $c; break }
+    $jdkCandidates = @(
+        $env:PHONE_BRIDGE_JAVA_HOME,
+        $env:JAVA_HOME,
+        (Join-Path $env:ProgramFiles 'Zulu\zulu-17'),
+        (Join-Path $env:ProgramFiles 'Eclipse Adoptium\jdk-17'),
+        (Join-Path $env:ProgramFiles 'Microsoft\jdk-17*'),
+        (Join-Path $env:ProgramFiles 'Java\jdk-17*')
+    )
+    foreach ($c in $jdkCandidates) {
+        if (-not $c) { continue }
+        $hit = Get-Item $c -ErrorAction SilentlyContinue
+        if ($hit -and (Test-Path (Join-Path $hit.FullName 'bin\javac.exe'))) {
+            $jdk = $hit.FullName; break
+        }
     }
     $sdk = $null
-    foreach ($c in @(
-            $env:PHONE_BRIDGE_SDK,
-            'D:\bian_cheng_ruan_jian\AndroidSdk\sdk',
-            (Join-Path $env:LOCALAPPDATA 'Android\Sdk')
-        )) {
-        if ($c -and (Test-Path $c)) { $sdk = $c; break }
+    $sdkCandidates = @(
+        $env:PHONE_BRIDGE_SDK,
+        $env:ANDROID_HOME,
+        $env:ANDROID_SDK_ROOT,
+        (Join-Path $env:LOCALAPPDATA 'Android\Sdk')
+    )
+    foreach ($c in $sdkCandidates) {
+        if ($c -and (Test-Path (Join-Path $c 'build-tools'))) { $sdk = $c; break }
     }
 
     if (-not $jdk -or -not $sdk) {
