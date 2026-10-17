@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/chs-1108/phone-bridge/stargazers"><img src="https://img.shields.io/github/stars/chs-1108/phone-bridge?logo=github&label=Stars" alt="GitHub stars"></a>
-  <a href="https://github.com/chs-1108/phone-bridge/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-65a30d?style=flat" alt="MIT license"></a>
+  <a href="https://github.com/chs-1108/dsh-phone-bridge/stargazers"><img src="https://img.shields.io/github/stars/chs-1108/dsh-phone-bridge?logo=github&label=Stars" alt="GitHub stars"></a>
+  <a href="https://github.com/chs-1108/dsh-phone-bridge/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-65a30d?style=flat" alt="MIT license"></a>
   <a href="https://awesome-dsh-plugin.com"><img src="https://awesome-dsh-plugin.com/badge.svg" alt="awesome · DSH plugin"></a>
   <a href="https://www.deepseek.com/harness/"><img src="https://img.shields.io/badge/dsh-0.2.0--rc.2-blue" alt="DSH"></a>
   <br>
@@ -125,7 +125,7 @@ If you would rather wire it up by hand:
 **1. Put the plugin where DSH can find it**
 
 ```bash
-git clone https://github.com/chs-1108/phone-bridge.git
+git clone https://github.com/chs-1108/dsh-phone-bridge.git
 mkdir -p ~/.dsh/phone-bridge
 cp -r phone-bridge/{index.js,client.js,package.json,cordis.patch.yml,web,vendor} ~/.dsh/phone-bridge/
 ```
