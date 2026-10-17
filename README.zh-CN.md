@@ -36,7 +36,7 @@
 | 文件 | 装在哪 | 大小 |
 | --- | --- | --- |
 | [`phone-bridge-1.1.2.apk`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-1.1.2.apk) | **手机** | 249 KB |
-| [`phone-bridge-plugin-1.1.0.zip`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-plugin-1.1.0.zip) | **电脑**（DSH 插件） | 5 MB |
+| [`phone-bridge-plugin-1.1.2.zip`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-plugin-1.1.2.zip) | **电脑**（DSH 插件） | 5 MB |
 
 三步上手：
 
@@ -128,7 +128,7 @@ DSH webServer  ──▶  /phone-bridge 前缀路由  ──▶  sessionControll
 | 文件 | 装在哪 | 大小 |
 | --- | --- | --- |
 | `phone-bridge-1.1.2.apk` | 手机 | 249 KB |
-| `phone-bridge-plugin-1.1.0.zip` | 电脑（DSH 插件） | 5 MB |
+| `phone-bridge-plugin-1.1.2.zip` | 电脑（DSH 插件） | 0.9 MB |
 
 ### 装到电脑
 
@@ -137,10 +137,48 @@ DSH webServer  ──▶  /phone-bridge 前缀路由  ──▶  sessionControll
 dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge
 
 # 方式二：下 zip 解开后本地装
-dsh plugin --profile desktop add "D:\path\to\phone-bridge-plugin-1.1.0.zip"
+dsh plugin --profile desktop add "D:\path\to\phone-bridge-plugin-1.1.2.zip"
 ```
 
 装完**重启 DSH**，然后在 DSH 里打开「设置 → 手机同步」。能看到二维码就是成了。
+
+### ⚠️ 必须改监听地址，否则手机连不上
+
+DSH 的 web 服务默认只监听 `127.0.0.1` —— 它本来只服务本机浏览器，**手机从 Tailscale 过来的请求会被直接拒掉**。
+
+编辑 profile 的 `cordis.patch.yml`：
+
+```
+Windows: %USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml
+macOS/Linux: ~/.dsh/profiles/desktop/cordis.patch.yml
+```
+
+加上（已存在 `webserver` 条目的话，只改 `host`）：
+
+```yaml
+- id: webserver
+  name: '@deepseek-ai/dsh-web-server'
+  config:
+    host: '0.0.0.0'
+    port: !!js ctx.webStartup.port ?? 3080
+    compression: gzip
+    compressionLevel: 1
+    compressionThresholdBytes: 1024
+  inject: [webStartup]
+```
+
+然后**完全退出 DSH 再打开**（关窗口不算）。验证：
+
+```powershell
+netstat -ano | findstr LISTENING | findstr 19387
+```
+
+| 看到 | 含义 |
+| --- | --- |
+| `0.0.0.0:19387` 或 `[::]:19387` | ✅ 手机能连进来 |
+| `127.0.0.1:19387` | ❌ 只有本机能连，手机一定失败 |
+
+**v1.1.2 起插件会自己检查**：设置面板顶部会出现红框直接告诉你是这个问题，不用再猜。
 
 验证命令行也行：
 

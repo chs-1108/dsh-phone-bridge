@@ -38,7 +38,7 @@
 | File | Goes on | Size |
 | --- | --- | --- |
 | [`phone-bridge-1.1.2.apk`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-1.1.2.apk) | **phone** | 249 KB |
-| [`phone-bridge-plugin-1.1.0.zip`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-plugin-1.1.0.zip) | **PC** (DSH plugin) | 5 MB |
+| [`phone-bridge-plugin-1.1.2.zip`](https://github.com/chs-1108/dsh-phone-bridge/releases/download/v1.1.2/phone-bridge-plugin-1.1.2.zip) | **PC** (DSH plugin) | 5 MB |
 
 Three steps:
 
@@ -128,7 +128,7 @@ Everything lives on one page: [**Releases → v1.1.2**](https://github.com/chs-1
 | File | Goes on | Size |
 | --- | --- | --- |
 | `phone-bridge-1.1.2.apk` | the phone | 249 KB |
-| `phone-bridge-plugin-1.1.0.zip` | the PC (DSH plugin) | 5 MB |
+| `phone-bridge-plugin-1.1.2.zip` | the PC (DSH plugin) | 0.9 MB |
 
 ### On the PC
 
@@ -137,10 +137,50 @@ Everything lives on one page: [**Releases → v1.1.2**](https://github.com/chs-1
 dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge
 
 # Or from the downloaded zip
-dsh plugin --profile desktop add "D:\path\to\phone-bridge-plugin-1.1.0.zip"
+dsh plugin --profile desktop add "D:\path\to\phone-bridge-plugin-1.1.2.zip"
 ```
 
 **Restart DSH**, then open **Settings → Phone Sync**. A QR code means it worked.
+
+### ⚠️ You must change the listen address, or the phone cannot connect
+
+DSH's web server binds `127.0.0.1` by default — it is meant for the local browser
+only, so **requests from the phone over Tailscale are refused outright**.
+
+Edit the profile's `cordis.patch.yml`:
+
+```
+Windows: %USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml
+macOS/Linux: ~/.dsh/profiles/desktop/cordis.patch.yml
+```
+
+Add this (if a `webserver` entry already exists, change only `host`):
+
+```yaml
+- id: webserver
+  name: '@deepseek-ai/dsh-web-server'
+  config:
+    host: '0.0.0.0'
+    port: !!js ctx.webStartup.port ?? 3080
+    compression: gzip
+    compressionLevel: 1
+    compressionThresholdBytes: 1024
+  inject: [webStartup]
+```
+
+Then **fully quit DSH and reopen it** (closing the window is not enough). Verify:
+
+```powershell
+netstat -ano | findstr LISTENING | findstr 19387
+```
+
+| You see | Meaning |
+| --- | --- |
+| `0.0.0.0:19387` or `[::]:19387` | ✅ the phone can reach it |
+| `127.0.0.1:19387` | ❌ local only, the phone will always fail |
+
+**From v1.1.2 the plugin checks this itself** and shows a red block at the top of
+the settings panel naming the cause, so you no longer have to guess.
 
 ```bash
 curl http://127.0.0.1:19387/phone-bridge/health
