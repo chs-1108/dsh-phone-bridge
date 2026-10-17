@@ -43,6 +43,11 @@ window.__ModuleLoader__.load({
       copied: '已复制',
       noAddress: '没有找到可用的地址。请在这台电脑上装好 Tailscale 并连上，或接入网络后重试。',
       noUrl: '暂无可用地址。',
+      loopbackTitle: '手机连不上：DSH 只监听本机',
+      loopbackBody:
+        '当前 DSH 的 web 服务只接受本机连接，手机发来的请求根本到不了这里。扫码再多遍也没用，必须先改监听地址。',
+      loopbackFix:
+        '在 profile 的 cordis.patch.yml 里把 webServer 的 host 改成 0.0.0.0，然后完全退出并重新打开 DSH。',
       tokenLabel: '配对密钥',
       sessionTitle: '目标会话',
       sessionLabel: '当前会话',
@@ -75,6 +80,11 @@ window.__ModuleLoader__.load({
       copied: 'Copied',
       noAddress: 'No reachable address found. Install Tailscale on this PC, or connect to a network.',
       noUrl: 'No reachable address yet.',
+      loopbackTitle: 'The phone cannot connect: DSH listens on loopback only',
+      loopbackBody:
+        'The DSH web server is accepting local connections only, so requests from the phone never arrive. Scanning the code again will not help — the listening address has to change first.',
+      loopbackFix:
+        'Set webServer host to 0.0.0.0 in the profile cordis.patch.yml, then fully quit and reopen DSH.',
       tokenLabel: 'Pairing token',
       sessionTitle: 'Target session',
       sessionLabel: 'Current session',
@@ -134,6 +144,8 @@ window.__ModuleLoader__.load({
       '.pb-switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none}',
       '.pb-switch input{width:15px;height:15px;accent-color:var(--dsw-alias-brand-primary)}',
       '.pb-err{color:var(--dsw-alias-status-error, #d04848)}',
+      '.pb-warn{border-color:var(--dsw-alias-status-error, #d04848)}',
+      '.pb-warn-text{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px}',
       '.pb-pre{margin:0;max-height:150px;overflow:auto;background:var(--dsw-alias-bg-layer-1);border-radius:8px;padding:8px 10px;font-size:11px;white-space:pre-wrap}',
       '.pb-hr{height:1px;background:var(--dsw-alias-border-l2);border:0;margin:0}',
     ].join('')
@@ -243,10 +255,25 @@ window.__ModuleLoader__.load({
         }
       }
 
+      // A correct pairing still fails when the web server bound itself to
+      // loopback: the phone's request never reaches this process. Raise it above
+      // everything else, because no amount of QR scanning fixes it.
+      var loopbackWarning =
+        status && status.loopbackOnly
+          ? h(
+              'div',
+              { className: 'pb-card pb-warn' },
+              h('div', { className: 'pb-card-title' }, t('loopbackTitle')),
+              h('p', { className: 'pb-warn-text' }, t('loopbackBody')),
+              h('p', { className: 'pb-warn-text pb-mono' }, t('loopbackFix')),
+            )
+          : null
+
       return h(
         'div',
         { className: 'pb-root' },
         h('p', { className: 'pb-intro' }, t('intro')),
+        loopbackWarning,
 
         h(
           'div',

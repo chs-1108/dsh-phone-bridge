@@ -85,17 +85,17 @@ if (typeof rel === 'string') {
 }
 
 // --- files allowlist must ship everything the plugin reads at runtime --------
-// Host index.js spawns the cloudflared binary from its own package directory, so
-// an npm `files` allowlist that omits `bin` ships a plugin whose tunnel can never
-// start ("cloudflared 未找到"). Check every package-relative path the host and
-// client read off disk is covered by `files`.
+// The host reads the QR helper and the served page off its own package
+// directory, so an npm `files` allowlist that omits one of them ships a plugin
+// that cannot serve the phone. Check every package-relative path the host and
+// client read off disk is covered by `files`. (cloudflared is gone: Tailscale is
+// the only transport now, so there is no bundled binary to ship.)
 const requiredPaths = [
   'index.js',
   'client.js',
   'cordis.patch.yml',
   'web/app.html',
   'vendor/qrcode.cjs',
-  'bin/cloudflared.exe',
 ]
 const allow = Array.isArray(pkg.files) ? pkg.files : []
 const covered = (rel) =>

@@ -321,6 +321,52 @@ class Tunnel {
     return 17890
   }
 
+  /**
+   * The address the web server actually bound to.
+   *
+   * Returns loopback-only markers ('127.0.0.1', 'localhost', '::1') when the
+   * server accepts nothing but local connections, which means no phone will ever
+   * reach it. Empty string when it cannot be determined.
+   */
+  boundHost() {
+    try {
+      const ctx = this.ctx()
+      const ws = ctx && ctx.webServer
+      if (!ws) return ''
+      // Different DSH versions expose it under different names.
+      for (const key of ['host', 'address', 'bind', 'listenHost', 'hostname']) {
+        const value = ws[key]
+        if (typeof value === 'string' && value !== '') return value
+      }
+      const server = ws.server || ws.httpServer || ws.instance
+      if (server && typeof server.address === 'function') {
+        const addr = server.address()
+        if (addr && typeof addr === 'object' && typeof addr.address === 'string') return addr.address
+      }
+    } catch {
+      /* ignore */
+    }
+    return ''
+  }
+
+  /**
+   * True when the server is bound to a concrete local interface rather than to
+   * every interface. Wildcards (0.0.0.0, ::, empty) are reachable, so they are
+   * not loopback-only.
+   */
+  loopbackOnly() {
+    const host = this.boundHost()
+    if (host === '') return false // unknown: do not cry wolf
+    const normalised = host.trim().toLowerCase().replace(/^\[|\]$/g, '')
+    if (normalised === '0.0.0.0' || normalised === '::' || normalised === '*') return false
+    return (
+      normalised === '127.0.0.1' ||
+      normalised === '::1' ||
+      normalised === 'localhost' ||
+      normalised.startsWith('127.')
+    )
+  }
+
   note() {}
 
   start() {
@@ -971,18 +1017,31 @@ export function apply(ctx, config) {
     return `${base}${ROUTE_PREFIX}/#t=${state.token}`
   }
 
-  const adminStatus = () => ({
-    ok: true,
-    version: 1,
-    tunnel: bridge.tunnel.snapshot(),
-    pairUrl: pairUrl(),
-    pairCandidates: pairCandidates(),
-    sessionId: state.sessionId,
-    cwd: state.cwd || process.cwd(),
-    defaultShowThinking: state.defaultShowThinking,
-    token: state.token,
-    hasQr: qrSvg('x') !== null,
-  })
+  const adminStatus = () => {
+    // The single most common reason a correct pairing still fails: the web
+    // server accepted only loopback, so the phone's packets never arrived. Say
+    // so explicitly instead of leaving the user with a bare connect timeout.
+    const boundHost = bridge.tunnel.boundHost()
+    const loopbackOnly = bridge.tunnel.loopbackOnly()
+    return {
+      ok: true,
+      version: 1,
+      tunnel: bridge.tunnel.snapshot(),
+      pairUrl: pairUrl(),
+      pairCandidates: pairCandidates(),
+      sessionId: state.sessionId,
+      cwd: state.cwd || process.cwd(),
+      defaultShowThinking: state.defaultShowThinking,
+      token: state.token,
+      hasQr: qrSvg('x') !== null,
+      boundHost,
+      loopbackOnly,
+      reachable: reachableAddresses().length > 0,
+      warning: loopbackOnly
+        ? `DSH 只监听本机（${boundHost}），手机无法连接。请在 profile 的 cordis.patch.yml 里把 webServer 的 host 改成 0.0.0.0，然后重启 DSH。`
+        : '',
+    }
+  }
 
   async function handle(req, res) {
     const url = new URL(req.url || '/', 'http://127.0.0.1')
@@ -990,9 +1049,17 @@ export function apply(ctx, config) {
     const method = (req.method || 'GET').toUpperCase()
     const rest = pathname.slice(ROUTE_PREFIX.length) || '/'
 
-    // Anywhere-public liveness probe: lets the phone validate the URL before pairing.
+    // Anywhere-public liveness probe: lets the phone validate the URL before
+    // pairing. A phone that reaches this at all proves the host binding is fine,
+    // so it also reports the binding for the desktop panel's diagnostics.
     if (pathname === `${ROUTE_PREFIX}/health`) {
-      return sendJson(res, 200, { ok: true, name: 'phone-bridge', version: 1 })
+      return sendJson(res, 200, {
+        ok: true,
+        name: 'phone-bridge',
+        version: 1,
+        boundHost: bridge.tunnel.boundHost(),
+        loopbackOnly: bridge.tunnel.loopbackOnly(),
+      })
     }
 
     const admin = isLocalAdmin(req)

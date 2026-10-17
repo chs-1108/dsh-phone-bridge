@@ -1,47 +1,49 @@
 {
-  "name": "dsh-phone-bridge",
-  "version": "1.1.0",
-  "private": true,
-  "description": "Use this DSH from your phone over Tailscale: the phone uploads text and photos and receives the Agent reply.",
-  "type": "module",
-  "main": "index.js",
-  "files": [
-    "index.js",
-    "client.js",
-    "cordis.patch.yml",
-    "web",
-    "vendor",
-    "bin"
-  ],
-  "keywords": [
-    "dsh",
-    "dsh-plugin",
-    "deepseek-harness",
-    "phone",
-    "tailscale"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/chs-1108/dsh-phone-bridge.git"
-  },
-  "homepage": "https://github.com/chs-1108/dsh-phone-bridge#readme",
-  "bugs": {
-    "url": "https://github.com/chs-1108/dsh-phone-bridge/issues"
-  },
-  "license": "MIT",
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "platform": "web",
-      "inject": []
-    }
-  },
-  "exports": {
-    ".": "./index.js",
-    "./client": "./client.js",
-    "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
-  }
+    "name":  "dsh-phone-bridge",
+    "version":  "1.1.2",
+    "private":  true,
+    "description":  "Use this DSH from your phone over Tailscale: the phone uploads text and photos and receives the Agent reply.",
+    "type":  "module",
+    "main":  "index.js",
+    "files":  [
+                  "index.js",
+                  "client.js",
+                  "cordis.patch.yml",
+                  "web",
+                  "vendor",
+                  "bin"
+              ],
+    "keywords":  [
+                     "dsh",
+                     "dsh-plugin",
+                     "deepseek-harness",
+                     "phone",
+                     "tailscale"
+                 ],
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/chs-1108/dsh-phone-bridge.git"
+                   },
+    "homepage":  "https://github.com/chs-1108/dsh-phone-bridge#readme",
+    "bugs":  {
+                 "url":  "https://github.com/chs-1108/dsh-phone-bridge/issues"
+             },
+    "license":  "MIT",
+    "dsh":  {
+                "bundle":  {
+                               "patch":  "./cordis.patch.yml"
+                           },
+                "client":  {
+                               "platform":  "web",
+                               "inject":  [
+
+                                          ]
+                           }
+            },
+    "exports":  {
+                    ".":  "./index.js",
+                    "./client":  "./client.js",
+                    "./cordis.patch.yml":  "./cordis.patch.yml",
+                    "./package.json":  "./package.json"
+                }
 }

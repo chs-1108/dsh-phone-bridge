@@ -40,6 +40,9 @@ const ctx = {
   },
   webServer: {
     port: 0,
+    // DSH defaults to loopback; the stub mirrors that so the diagnostics that
+    // warn about it are actually exercised.
+    host: '127.0.0.1',
     register(route) {
       registered = route
       routes.push(route)
@@ -198,6 +201,10 @@ function check(name, ok, detail) {
 
 const health = await fetch(`${base}/phone-bridge/health`).then((r) => r.json())
 check('health', health.ok === true && health.name === 'phone-bridge')
+// The stub binds 127.0.0.1, which is exactly the situation that used to leave
+// users with an unreachable plugin and no explanation.
+check('health reports the bound host', health.boundHost === '127.0.0.1', health.boundHost)
+check('health flags loopback-only binding', health.loopbackOnly === true)
 
 const html = await fetch(`${base}/phone-bridge/`).then(async (r) => ({
   status: r.status,
