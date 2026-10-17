@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>DSH 手机同步</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --fg:#14161a; --dim:#6b7280; --line:#e3e6ea;
+    --brand:#2f6fed; --brand-fg:#ffffff; --ok:#1f9254; --err:#c0392b;
+    --bubble:#ffffff; --me:#2f6fed; --me-fg:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#15171b; --card:#1e2126; --fg:#e8eaed; --dim:#9aa0a6; --line:#2e3238;
+      --brand:#5b8cff; --brand-fg:#0b0d10; --ok:#4ec27e; --err:#ff6b5e;
+      --bubble:#1e2126; --me:#3a6fd8; --me-fg:#ffffff;
+    }
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex; flex-direction:column; height:100dvh; overflow:hidden;
+  }
+  header{
+    flex:none; display:flex; align-items:center; gap:8px;
+    padding:calc(env(safe-area-inset-top) + 10px) 14px 10px; background:var(--card);
+    border-bottom:1px solid var(--line);
+  }
+  header .t{font-weight:600; font-size:16px; flex:1}
+  header .dot{width:8px;height:8px;border-radius:99px;background:var(--dim);flex:none}
+  header .dot.on{background:var(--ok)}
+  header .dot.err{background:var(--err)}
+  .iconbtn{
+    appearance:none;border:1px solid var(--line);background:transparent;color:var(--fg);
+    border-radius:8px;padding:5px 9px;font-size:13px;cursor:pointer
+  }
+  #log{flex:1; overflow-y:auto; padding:14px 12px 6px; display:flex; flex-direction:column; gap:12px}
+  .row{display:flex; flex-direction:column; max-width:88%}
+  .row.me{align-self:flex-end; align-items:flex-end}
+  .row.ai{align-self:flex-start; align-items:flex-start}
+  .bubble{
+    background:var(--bubble); border:1px solid var(--line); border-radius:14px;
+    padding:10px 12px; white-space:pre-wrap; word-break:break-word;
+  }
+  .row.me .bubble{background:var(--me); color:var(--me-fg); border-color:transparent}
+  .meta{font-size:11px; color:var(--dim); margin-bottom:4px}
+  .think{
+    border:1px dashed var(--line); border-radius:12px; padding:9px 11px;
+    color:var(--dim); font-size:13px; white-space:pre-wrap; word-break:break-word;
+    background:transparent;
+  }
+  .think .h{font-size:11px; letter-spacing:.04em; text-transform:uppercase; margin-bottom:5px; opacity:.8}
+  .thumbs{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px}
+  .thumbs img{width:74px;height:74px;object-fit:cover;border-radius:9px;border:1px solid var(--line)}
+  .err{color:var(--err); font-size:13px}
+  footer{
+    flex:none; background:var(--card); border-top:1px solid var(--line);
+    padding:9px 10px calc(env(safe-area-inset-bottom) + 9px);
+  }
+  .tools{display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap}
+  .tools label{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--dim)}
+  .composer{display:flex; gap:8px; align-items:flex-end}
+  textarea{
+    flex:1; resize:none; border:1px solid var(--line); background:var(--bg); color:var(--fg);
+    border-radius:12px; padding:9px 11px; font:inherit; max-height:132px; min-height:42px;
+  }
+  button.send{
+    appearance:none; border:0; background:var(--brand); color:var(--brand-fg);
+    border-radius:12px; padding:11px 16px; font-size:15px; font-weight:600; cursor:pointer; flex:none;
+  }
+  button.send:disabled{opacity:.5}
+  .chip{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:3px 9px;background:transparent;cursor:pointer}
+  .sheet{
+    position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:flex-end; z-index:20;
+  }
+  .sheet.open{display:flex}
+  .sheet .body{background:var(--card); width:100%; border-radius:16px 16px 0 0; padding:16px 16px calc(env(safe-area-inset-bottom) + 16px); max-height:70dvh; overflow:auto}
+  .sheet h3{margin:0 0 10px; font-size:15px}
+  .kv{display:flex; gap:8px; font-size:12px; color:var(--dim); margin:5px 0; word-break:break-all}
+  .kv b{color:var(--fg); font-weight:600; flex:none}
+  .sess{display:block;width:100%;text-align:left;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:9px;padding:8px 10px;margin-bottom:6px;font-size:13px}
+  .sess.on{border-color:var(--brand); color:var(--brand)}
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <span class="t">DSH 手机同步</span>
+  <button class="iconbtn" id="btnSession">会话</button>
+  <button class="iconbtn" id="btnInfo">设置</button>
+</header>
+
+<div id="log"></div>
+
+<footer>
+  <div class="tools">
+    <button class="iconbtn" id="btnPick">📷 拍照 / 相册</button>
+    <span class="chip" id="chipThink" hidden>显示思考</span>
+    <span class="chip" id="chipSession"></span>
+  </div>
+  <div class="composer">
+    <textarea id="text" rows="1" placeholder="输入要发送给 DSH 的内容…"></textarea>
+    <button class="send" id="btnSend">发送</button>
+  </div>
+  <input type="file" id="file" accept="image/*" multiple hidden>
+</footer>
+
+<div class="sheet" id="sheet">
+  <div class="body" id="sheetBody"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var q = new URLSearchParams(location.search);
+  var TOKEN = q.get('token') || (location.hash.indexOf('#t=') === 0 ? location.hash.slice(3) : '');
+  var API = '/phone-bridge/api';
+  var log = document.getElementById('log');
+  var dot = document.getElementById('dot');
+  var text = document.getElementById('text');
+  var btnSend = document.getElementById('btnSend');
+  var btnPick = document.getElementById('btnPick');
+  var fileInput = document.getElementById('file');
+  var chipThink = document.getElementById('chipThink');
+  var chipSession = document.getElementById('chipSession');
+  var sheet = document.getElementById('sheet');
+  var sheetBody = document.getElementById('sheetBody');
+
+  var pending = [];      // {mediaType, data, name}
+  var busy = false;
+  var showThinking = false;
+  var sessionId = '';
+  var pollers = {};
+
+  function url(path) { return API + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN); }
+
+  function get(path) {
+    return fetch(url(path), { headers: { accept: 'application/json' } }).then(function (r) {
+      return r.json().then(function (b) {
+        if (!r.ok || b.ok === false) throw new Error((b && b.error) || ('HTTP ' + r.status));
+        return b;
+      });
+    });
+  }
+  function post(path, body) {
+    return fetch(url(path), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(body || {})
+    }).then(function (r) {
+      return r.json().then(function (b) {
+        if (!r.ok || b.ok === false) throw new Error((b && b.error) || ('HTTP ' + r.status));
+        return b;
+      });
+    });
+  }
+
+  function atBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 90; }
+  function scrollDown(force) { if (force || atBottom()) log.scrollTop = log.scrollHeight; }
+
+  function el(tag, cls, txt) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (txt != null) n.textContent = txt;
+    return n;
+  }
+
+  function addUser(textValue, images) {
+    var row = el('div', 'row me');
+    var b = el('div', 'bubble');
+    if (images && images.length) {
+      var box = el('div', 'thumbs');
+      images.forEach(function (im) {
+        var img = document.createElement('img');
+        img.src = 'data:' + im.mediaType + ';base64,' + im.data;
+        box.appendChild(img);
+      });
+      b.appendChild(box);
+    }
+    if (textValue) b.appendChild(el('div', null, textValue));
+    row.appendChild(b);
+    log.appendChild(row);
+    scrollDown(true);
+  }
+
+  function addAi() {
+    var row = el('div', 'row ai');
+    var think = el('div', 'think');
+    think.hidden = true;
+    think.appendChild(el('div', 'h', '思考过程'));
+    var thinkBody = el('div');
+    think.appendChild(thinkBody);
+    var b = el('div', 'bubble', '…');
+    row.appendChild(think);
+    row.appendChild(b);
+    var err = el('div', 'err');
+    err.hidden = true;
+    row.appendChild(err);
+    log.appendChild(row);
+    scrollDown(true);
+    return { think: think, thinkBody: thinkBody, bubble: b, err: err };
+  }
+
+  function setBusy(v) {
+    busy = v;
+    btnSend.disabled = v;
+    btnSend.textContent = v ? '…' : '发送';
+  }
+
+  function send() {
+    if (busy) return;
+    var value = text.value.trim();
+    var images = pending.slice();
+    if (!value && images.length === 0) return;
+    text.value = '';
+    autoGrow();
+    pending = [];
+    updateChips();
+    sendWith(images, value);
+  }
+
+  function sendWith(images, textOverride) {
+    if (busy) return;
+    var value = typeof textOverride === 'string' ? textOverride : '';
+    if (!value && (!images || images.length === 0)) return;
+    setBusy(true);
+    addUser(value, images);
+    var view = addAi();
+
+    post('/send', { text: value, images: images || [], showThinking: showThinking })
+      .then(function (res) { track(res.job, view); })
+      .catch(function (e) {
+        view.bubble.hidden = true;
+        view.err.hidden = false;
+        view.err.textContent = '发送失败：' + e.message;
+        setBusy(false);
+      });
+  }
+
+  function track(jobId, view) {
+    var stopped = false;
+    var timer = setInterval(function () {
+      if (stopped) return;
+      get('/poll?job=' + encodeURIComponent(jobId))
+        .then(function (s) {
+          if (s.reasoning && showThinking) {
+            view.think.hidden = false;
+            view.thinkBody.textContent = s.reasoning;
+          } else if (!showThinking) {
+            view.think.hidden = true;
+          }
+          if (s.final) view.bubble.textContent = s.final;
+          if (s.status === 'done' || s.status === 'error') {
+            stopped = true;
+            clearInterval(timer);
+            setBusy(false);
+            if (s.status === 'error') {
+              view.err.hidden = false;
+              view.err.textContent = '出错了：' + (s.error || '未知错误');
+              if (!s.final) view.bubble.hidden = true;
+            } else if (!s.final) {
+              view.bubble.textContent = '（没有文本回复）';
+            }
+            scrollDown(false);
+          } else {
+            scrollDown(false);
+          }
+        })
+        .catch(function (e) {
+          stopped = true;
+          clearInterval(timer);
+          setBusy(false);
+          view.err.hidden = false;
+          view.err.textContent = '连接中断：' + e.message;
+        });
+    }, 700);
+  }
+
+  function autoGrow() {
+    text.style.height = 'auto';
+    text.style.height = Math.min(132, Math.max(42, text.scrollHeight)) + 'px';
+  }
+
+  function updateChips() {
+    chipThink.hidden = !showThinking;
+    chipThink.textContent = '显示思考';
+    chipThink.classList.toggle('on', showThinking);
+    chipSession.textContent = sessionId ? ('会话 ' + sessionId.slice(0, 12)) : '未指定会话';
+  }
+
+  function refreshStatus() {
+    return get('/status')
+      .then(function (s) {
+        showThinking = !!s.defaultShowThinking;
+        sessionId = s.sessionId || '';
+        dot.className = 'dot ' + (s.tunnel && s.tunnel.status === 'running' ? 'on' : (s.tunnel && s.tunnel.status === 'error' ? 'err' : ''));
+        updateChips();
+      })
+      .catch(function () { dot.className = 'dot err'; });
+  }
+
+  /* ---- events ---- */
+  text.addEventListener('input', autoGrow);
+  text.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+  });
+  btnSend.addEventListener('click', send);
+
+  btnPick.addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () {
+    var files = Array.prototype.slice.call(fileInput.files || []);
+    if (!files.length) { fileInput.value = ''; return; }
+    var collected = [];
+    var remaining = files.length;
+    // Reset the input only AFTER every File has been read. Clearing value earlier
+    // invalidates the File objects handed to FileReader on Android WebView, which
+    // yields an empty data: URL and silently drops the photo.
+    function done() {
+      if (--remaining > 0) return;
+      fileInput.value = '';
+      sendWith(collected);
+    }
+    files.forEach(function (f) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var result = String(reader.result || '');
+        var comma = result.indexOf(',');
+        var data = comma >= 0 ? result.slice(comma + 1) : '';
+        if (data) collected.push({ mediaType: f.type || 'image/jpeg', data: data, name: f.name || 'photo.jpg' });
+        done();
+      };
+      reader.onerror = function () { done(); };
+      reader.readAsDataURL(f);
+    });
+  });
+
+  chipThink.addEventListener('click', function () {
+    showThinking = !showThinking;
+    updateChips();
+    post('/prefs', { defaultShowThinking: showThinking }).catch(function () {});
+  });
+
+  function closeSheet() { sheet.classList.remove('open'); }
+  sheet.addEventListener('click', function (e) { if (e.target === sheet) closeSheet(); });
+
+  document.getElementById('btnInfo').addEventListener('click', function () {
+    sheetBody.innerHTML = '';
+    sheetBody.appendChild(el('h3', null, '设置'));
+    var kv1 = el('div', 'kv'); kv1.innerHTML = '<b>配对密钥</b> ' + TOKEN.slice(0, 12) + '…'; sheetBody.appendChild(kv1);
+    var kv2 = el('div', 'kv'); kv2.innerHTML = '<b>会话</b> ' + (sessionId || '未指定'); sheetBody.appendChild(kv2);
+    var kv3 = el('div', 'kv'); kv3.innerHTML = '<b>回复内容</b> ' + (showThinking ? '最终结果 + 思考过程' : '仅最终结果'); sheetBody.appendChild(kv3);
+    var b1 = el('button', 'sess', showThinking ? '改为：仅返回最终结果' : '改为：同时返回思考过程');
+    b1.onclick = function () {
+      showThinking = !showThinking;
+      updateChips();
+      post('/prefs', { defaultShowThinking: showThinking }).then(function () { closeSheet(); });
+    };
+    sheetBody.appendChild(b1);
+    var b2 = el('button', 'sess', '新建一个会话');
+    b2.onclick = function () {
+      post('/prefs', { newSession: true }).then(function (s) { sessionId = s.sessionId || ''; updateChips(); closeSheet(); });
+    };
+    sheetBody.appendChild(b2);
+    var b3 = el('button', 'sess', '清除配对（重新扫码）');
+    b3.onclick = function () { localStorage.removeItem('pb.paired'); location.href = '/phone-bridge/'; };
+    sheetBody.appendChild(b3);
+    sheet.classList.add('open');
+  });
+
+  document.getElementById('btnSession').addEventListener('click', function () {
+    sheetBody.innerHTML = '';
+    sheetBody.appendChild(el('h3', null, '选择目标会话'));
+    var b0 = el('button', 'sess' + (sessionId ? '' : ' on'), '自动（最近使用的会话）');
+    b0.onclick = function () { post('/prefs', { newSession: true }).then(function (s) { sessionId = s.sessionId || ''; updateChips(); closeSheet(); }); };
+    sheetBody.appendChild(b0);
+    var loading = el('div', 'kv', '加载中…');
+    sheetBody.appendChild(loading);
+    get('/sessions')
+      .then(function (res) {
+        loading.remove();
+        (res.items || []).forEach(function (item) {
+          var b = el('button', 'sess' + (item.sessionId === sessionId ? ' on' : ''), item.label || item.sessionId);
+          b.onclick = function () {
+            post('/prefs', { sessionId: item.sessionId }).then(function (s) { sessionId = s.sessionId || ''; updateChips(); closeSheet(); });
+          };
+          sheetBody.appendChild(b);
+        });
+      })
+      .catch(function (e) { loading.textContent = '无法读取会话列表：' + e.message; });
+    sheet.classList.add('open');
+  });
+
+  setInterval(refreshStatus, 5000);
+  refreshStatus();
+  autoGrow();
+  window.addEventListener('resize', autoGrow);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="160" viewBox="0 0 640 160" role="img" aria-label="phone-bridge">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1b2340"/>
+      <stop offset="100%" stop-color="#0d1220"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4b6fff"/>
+      <stop offset="100%" stop-color="#7da1de"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="160" rx="18" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="639" height="159" rx="18" fill="none" stroke="#2a3556"/>
+
+  <g transform="translate(64,44)">
+    <rect x="0" y="0" width="44" height="72" rx="8" fill="none" stroke="url(#accent)" stroke-width="3"/>
+    <rect x="14" y="6" width="16" height="3" rx="1.5" fill="#7da1de"/>
+    <rect x="10" y="20" width="24" height="2.5" rx="1.25" fill="#3d4b74"/>
+    <rect x="10" y="28" width="18" height="2.5" rx="1.25" fill="#3d4b74"/>
+    <circle cx="22" cy="62" r="3" fill="#4b6fff"/>
+  </g>
+
+  <path d="M128 80 H 196" stroke="#4b6fff" stroke-width="2.5" stroke-dasharray="6 5" opacity="0.85"/>
+  <circle cx="162" cy="80" r="4" fill="#7da1de"/>
+
+  <g transform="translate(214,44)">
+    <rect x="0" y="0" width="96" height="72" rx="8" fill="none" stroke="url(#accent)" stroke-width="3"/>
+    <rect x="10" y="12" width="76" height="4" rx="2" fill="#3d4b74"/>
+    <rect x="10" y="24" width="54" height="4" rx="2" fill="#3d4b74"/>
+    <rect x="10" y="36" width="66" height="4" rx="2" fill="#3d4b74"/>
+    <rect x="10" y="52" width="34" height="9" rx="4.5" fill="#4b6fff" opacity="0.75"/>
+  </g>
+
+  <text x="330" y="72" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="30" font-weight="600" fill="#eef2ff">phone-bridge</text>
+  <text x="330" y="102" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#8fa0c8">Any network · your own tailnet · real DSH session</text>
+</svg>

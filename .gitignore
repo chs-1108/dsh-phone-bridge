@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------- build output
+dist/
+apk-out/
+apk/classes/
+apk/dex/
+apk/gen/
+apk/compiled/
+apk/res.zip
+
+# ------------------------------------------------------------- bulky binaries
+# Get these yourself instead of committing them:
+#   tailscale-android.apk  https://fdl.tailscale.com/... or the Play Store
+#   cloudflared.exe        https://github.com/cloudflare/cloudflared/releases
+bin/tailscale-android.apk
+bin/cloudflared.exe
+
+# ------------------------------------------------------------------- debug junk
+*.log
+*.bak
+*.bak-*
+*.orig
+*~
+*.idsig
+state.json
+pair-qr.png
+pair-qr.svg
+
+# ---------------------------------------------------------------- OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# ----------------------------------------------------------------- build tools
+node_modules/
+*.zip

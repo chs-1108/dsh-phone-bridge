@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The bridge is reached over a private Tailscale address (or a plain-HTTP
+  tunnel), so cleartext is required. Rather than allowing cleartext everywhere,
+  only the private endpoints this app legitimately talks to are permitted;
+  everything else keeps the platform default (HTTPS only).
+
+  The concrete host is supplied at build time by build-apk.ps1, which rewrites
+  this file with the -BaseUrl host. No specific address is committed.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Loopback, for a tunnel running on the phone itself (adb reverse). -->
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <!-- Android emulator host loopback. -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
