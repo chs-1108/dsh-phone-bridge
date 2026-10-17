@@ -10,6 +10,13 @@ final class BridgeConfig {
     private static final String KEY_BASE = "base_url";
     private static final String KEY_TOKEN = "token";
     private static final String KEY_THINKING = "show_thinking";
+    /**
+     * Set once the user explicitly asks to forget this host. Without it a build
+     * that carries build-time defaults can never be un-paired: baseUrl() falls
+     * back to DEFAULT_BASE when the stored value is missing, so removing the keys
+     * left paired() true and the setup screen bounced straight back to the chat.
+     */
+    private static final String KEY_UNPAIRED = "unpaired";
 
     /**
      * Build-time defaults. When this build is compiled for one specific host (the
@@ -28,6 +35,7 @@ final class BridgeConfig {
     }
 
     static String baseUrl(Context ctx) {
+        if (prefs(ctx).getBoolean(KEY_UNPAIRED, false)) return "";
         String v = prefs(ctx).getString(KEY_BASE, "");
         if (v == null || v.trim().isEmpty()) {
             return DEFAULT_BASE;
@@ -36,6 +44,7 @@ final class BridgeConfig {
     }
 
     static String token(Context ctx) {
+        if (prefs(ctx).getBoolean(KEY_UNPAIRED, false)) return "";
         String v = prefs(ctx).getString(KEY_TOKEN, "");
         if (v == null || v.trim().isEmpty()) {
             return DEFAULT_TOKEN;
@@ -56,14 +65,36 @@ final class BridgeConfig {
     }
 
     static void save(Context ctx, String baseUrl, String token) {
+        // Same reason as clear(): the caller starts MainActivity straight away,
+        // and MainActivity checks paired() before it will show the chat.
         prefs(ctx).edit()
                 .putString(KEY_BASE, baseUrl == null ? "" : baseUrl.trim())
                 .putString(KEY_TOKEN, token == null ? "" : token.trim())
-                .apply();
+                .remove(KEY_UNPAIRED)
+                .commit();
     }
 
+    /**
+     * Forgets the current host.
+     *
+     * commit() rather than apply(): the caller launches SetupActivity right
+     * afterwards, and SetupActivity reads this state in its own onCreate to
+     * decide whether to show the pairing screen or bounce straight back to
+     * MainActivity. apply() writes to memory now but to disk on a background
+     * thread, and the in-memory copy is only guaranteed visible to the same
+     * SharedPreferences instance - a second getSharedPreferences() from another
+     * activity could still read the old values, which made "clear pairing"
+     * land back on the chat screen.
+     */
     static void clear(Context ctx) {
-        prefs(ctx).edit().remove(KEY_BASE).remove(KEY_TOKEN).apply();
+        // KEY_UNPAIRED is what actually makes the app forget: it also suppresses
+        // the build-time defaults, which would otherwise restore the old host the
+        // moment the stored keys are gone. save() removes it again.
+        prefs(ctx).edit()
+                .remove(KEY_BASE)
+                .remove(KEY_TOKEN)
+                .putBoolean(KEY_UNPAIRED, true)
+                .commit();
     }
 
     /**

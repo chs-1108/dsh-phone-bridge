@@ -86,7 +86,12 @@ public final class MainActivity extends Activity {
                     public void run() {
                         BridgeConfig.clear(MainActivity.this);
                         BridgeService.stop(MainActivity.this);
-                        startActivity(new Intent(MainActivity.this, SetupActivity.class));
+                        // CLEAR_TASK: an older SetupActivity may still be sitting in
+                        // the task, and reusing it would show whatever state it was
+                        // built with instead of the fresh pairing screen.
+                        Intent setup = new Intent(MainActivity.this, SetupActivity.class);
+                        setup.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        startActivity(setup);
                         finish();
                     }
                 });
