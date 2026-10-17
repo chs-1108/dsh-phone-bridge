@@ -668,6 +668,15 @@ class Bridge {
     this.follower = null
   }
 
+  /** The running job bound to exactly this turn, or null. Never guesses. */
+  jobForTurn(turn) {
+    if (typeof turn !== 'number') return null
+    for (const job of this.jobs.values()) {
+      if (job.status === 'running' && job.turn === turn) return job
+    }
+    return null
+  }
+
   /**
    * The job that owns the turn currently in flight.
    *
@@ -715,6 +724,26 @@ class Bridge {
     return job
   }
 
+  /**
+   * The job allowed to consume stream chunks.
+   *
+   * Stream chunks are unattributed, so the only safe owner is a job that
+   * turn/start bound explicitly AND that is still the newest such binding.
+   * Returning the first running job here fed desktop output into the phone's
+   * answer, which is exactly the "reply never arrives, wrong text arrives"
+   * symptom. Two bound jobs means the newer turn has started, so the older one
+   * is stale and must not keep eating chunks.
+   */
+  streamOwner() {
+    let owner = null
+    for (const job of this.jobs.values()) {
+      if (job.status !== 'running') continue
+      if (job.turn === null) continue
+      if (!owner || job.turn > owner.turn) owner = job
+    }
+    return owner
+  }
+
   onFrame(frame) {
     if (!frame || typeof frame !== 'object') return
     if (frame.type === 'snapshot') {
@@ -723,7 +752,11 @@ class Bridge {
     if (frame.type === 'assistant-stream') {
       const inner = frame.frame
       if (!inner || inner.type !== 'chunk') return
-      const job = this.runningJob()
+      // A stream chunk carries no turn number, so it cannot be attributed on its
+      // own. Only the job that turn/start already bound to the turn in flight may
+      // consume it: otherwise output produced anywhere else in the session (the
+      // desktop window, another client) is mistaken for this phone's answer.
+      const job = this.streamOwner()
       if (!job) return
       const chunk = inner.chunk
       if (!chunk || typeof chunk !== 'object') return
@@ -770,7 +803,14 @@ class Bridge {
       case 'assistant/message': {
         const job = this.runningJob(data.turn)
         if (!job) return
-        if (job.turn !== null && typeof data.turn === 'number' && data.turn !== job.turn) return
+        // Only this turn's own message belongs here. The old test skipped the
+        // mismatch only when job.turn was already set, so an unbound job happily
+        // absorbed a message from a different turn.
+        if (typeof data.turn === 'number' && job.turn !== null && data.turn !== job.turn) return
+        if (typeof data.turn === 'number' && job.turn === null) {
+          // Adopt the turn this message proves the job belongs to.
+          job.turn = data.turn
+        }
         const blocks = blocksOf(data.message)
         // The durable stream records are the authoritative rendering of this
         // message; the content blocks are the fallback.
@@ -799,9 +839,11 @@ class Bridge {
         return
       }
       case 'turn/end': {
-        const job = this.runningJob(data.turn)
+        // turn/end names the turn it ends, so match on that alone. Falling back
+        // to "any running job" would end an unrelated job whenever the turn
+        // numbers happen to be missing.
+        const job = this.jobForTurn(data.turn)
         if (!job) return
-        if (job.turn !== null && typeof data.turn === 'number' && data.turn !== job.turn) return
         const reason = data.reason
         const kind = reason && typeof reason === 'object' ? reason.kind : undefined
         // TurnEndReasonMap: completed | aborted | blocked | error | max-tokens | interrupted | forked

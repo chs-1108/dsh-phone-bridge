@@ -38,6 +38,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_FILE = 4001;
     private static final int REQ_CAMERA_PERMISSION = 4002;
     private static final int REQ_CAMERA_PERMISSION_FOR_FILE = 4003;
+    private static final int REQ_NOTIFICATIONS = 4004;
 
     private WebView web;
     private ValueCallback<Uri[]> pendingFileCallback;
@@ -122,6 +123,13 @@ public final class MainActivity extends Activity {
         });
 
         web.loadUrl(entryUrl());
+
+        // Run as a foreground service so the WebView keeps its timers when the
+        // phone goes idle. Android otherwise freezes a backgrounded page and the
+        // poll loop stops, which is why replies stopped arriving once the screen
+        // was off.
+        BridgeService.start(this);
+        requestNotificationPermissionIfNeeded();
 
         // Ask for the camera and media-read permissions up front so the first tap
         // on "拍照" opens the camera directly and the captured file can be read
@@ -407,5 +415,67 @@ public final class MainActivity extends Activity {
 
     private void toast(String text) {
         Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * The foreground service cannot show its notification on Android 13+ without
+     * the runtime notification permission. Without the notification the service
+     * is not allowed to run, so ask when the app opens.
+     */
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        web.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!isFinishing()) {
+                    requestPermissions(
+                            new String[] { "android.permission.POST_NOTIFICATIONS" },
+                            REQ_NOTIFICATIONS);
+                }
+            }
+        }, 900);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Pausing the activity froze the page's timers. Resuming them and firing
+        // a visibilitychange makes the poll loop pick up immediately instead of
+        // waiting for the next scheduled tick.
+        if (web != null) {
+            web.onResume();
+            web.resumeTimers();
+            web.evaluateJavascript(
+                    "(function(){try{window.dispatchEvent(new Event('online'))}catch(e){}})()",
+                    null);
+        }
+        BridgeService.start(this);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Deliberately NOT calling web.onPause(): that is what suspended the
+        // JavaScript timers and killed the poll loop. The activity is leaving the
+        // foreground, but the page must keep running so replies keep arriving.
+    }
+
+    @Override
+    protected void onDestroy() {
+        // Only tear the page down when the activity is really going away, and keep
+        // the service running so the connection survives.
+        if (isFinishing() && web != null) {
+            try {
+                web.loadUrl("about:blank");
+                web.destroy();
+            } catch (Exception ignored) {
+            }
+            web = null;
+        }
+        super.onDestroy();
     }
 }

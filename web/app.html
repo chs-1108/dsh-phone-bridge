@@ -241,44 +241,83 @@
       });
   }
 
+  // Polling has to survive the phone being put away. Browsers throttle or fully
+  // suspend setInterval in a backgrounded tab, and a single failed request used
+  // to tear the loop down for good, so a reply that landed while the screen was
+  // off was never seen. Track with a self-rescheduling timeout, retry on error,
+  // and re-check the moment the page becomes visible again.
+  var pendingJobs = [];
+
   function track(jobId, view) {
-    var stopped = false;
-    var timer = setInterval(function () {
-      if (stopped) return;
-      get('/poll?job=' + encodeURIComponent(jobId))
-        .then(function (s) {
-          if (s.reasoning && showThinking) {
-            view.think.hidden = false;
-            view.thinkBody.textContent = s.reasoning;
-          } else if (!showThinking) {
-            view.think.hidden = true;
-          }
-          if (s.final) view.bubble.textContent = s.final;
-          if (s.status === 'done' || s.status === 'error') {
-            stopped = true;
-            clearInterval(timer);
-            setBusy(false);
-            if (s.status === 'error') {
-              view.err.hidden = false;
-              view.err.textContent = '出错了：' + (s.error || '未知错误');
-              if (!s.final) view.bubble.hidden = true;
-            } else if (!s.final) {
-              view.bubble.textContent = '（没有文本回复）';
-            }
-            scrollDown(false);
-          } else {
-            scrollDown(false);
-          }
-        })
-        .catch(function (e) {
-          stopped = true;
-          clearInterval(timer);
-          setBusy(false);
-          view.err.hidden = false;
-          view.err.textContent = '连接中断：' + e.message;
-        });
-    }, 700);
+    var entry = { jobId: jobId, view: view, stopped: false, failures: 0, timer: null };
+    pendingJobs.push(entry);
+    pollJob(entry);
+    resumePending();
   }
+
+  function pollJob(entry) {
+    if (entry.stopped) return;
+    if (document.hidden) return; // resumed by the visibility handler
+    get('/poll?job=' + encodeURIComponent(entry.jobId))
+      .then(function (s) {
+        entry.failures = 0;
+        if (s.reasoning && showThinking) {
+          entry.view.think.hidden = false;
+          entry.view.thinkBody.textContent = s.reasoning;
+        } else if (!showThinking) {
+          entry.view.think.hidden = true;
+        }
+        if (s.final) entry.view.bubble.textContent = s.final;
+        if (s.status === 'done' || s.status === 'error') {
+          entry.stopped = true;
+          setBusy(false);
+          if (s.status === 'error') {
+            entry.view.err.hidden = false;
+            entry.view.err.textContent = '出错了：' + (s.error || '未知错误');
+            if (!s.final) entry.view.bubble.hidden = true;
+          } else if (!s.final) {
+            entry.view.bubble.textContent = '（没有文本回复）';
+          }
+          scrollDown(false);
+          return;
+        }
+        scrollDown(false);
+        entry.timer = setTimeout(function () { pollJob(entry); }, 700);
+      })
+      .catch(function (e) {
+        // A dropped connection is normal on a phone: switching networks, waking
+        // from sleep, or the PC restarting DSH. Keep trying with a gentle
+        // backoff instead of abandoning the answer.
+        if (entry.stopped) return;
+        entry.failures++;
+        if (entry.failures === 1) {
+          entry.view.err.hidden = false;
+          entry.view.err.textContent = '连接中断，重试中…';
+        }
+        var wait = Math.min(700 * entry.failures, 5000);
+        entry.timer = setTimeout(function () { pollJob(entry); }, wait);
+      });
+  }
+
+  function resumePending() {
+    if (document.hidden) return;
+    for (var i = 0; i < pendingJobs.length; i++) {
+      var entry = pendingJobs[i];
+      if (entry.stopped) continue;
+      if (entry.timer) { clearTimeout(entry.timer); entry.timer = null; }
+      entry.failures = 0;
+      pollJob(entry);
+    }
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) {
+      resumePending();
+      refreshStatus();
+    }
+  });
+  window.addEventListener('pageshow', function () { resumePending(); });
+  window.addEventListener('online', function () { resumePending(); });
 
   function autoGrow() {
     text.style.height = 'auto';

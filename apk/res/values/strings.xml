@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DSH 手机同步</string>
+    <string name="channel_bridge">保持连接</string>
+    <string name="channel_bridge_desc">息屏或切到后台时仍能收到电脑端的回复</string>
+    <string name="notif_bridge_title">DSH 手机同步</string>
+    <string name="notif_bridge_text">会一直等电脑端的消息</string>
+</resources>
