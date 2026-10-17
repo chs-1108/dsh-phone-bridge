@@ -609,18 +609,40 @@ else {
             else {
                 $tsApk = Join-Path $root 'bin\tailscale-android.apk'
                 if (-not (Test-Path $tsApk)) {
-                    $tsApk = 'D:\bian_cheng_ruan_jian\Tailscale\tailscale-android.apk'
+                    # The APK is 100 MB, over GitHub's per-file limit, so it is not
+                    # committed. Fetch it on demand from F-Droid instead.
+                    $tsUrl = 'https://f-droid.org/repo/com.tailscale.ipn_298177930.apk'
+                    Write-Info "downloading Tailscale for Android (~100 MB, one time)..."
+                    $dl = Join-Path $root 'bin\tailscale-android.apk.download'
+                    $ok = $false
+                    $prevProgress = $ProgressPreference
+                    $ProgressPreference = 'SilentlyContinue'
+                    try {
+                        Invoke-WebRequest -Uri $tsUrl -OutFile $dl -UseBasicParsing -TimeoutSec 600
+                        $ok = (Test-Path $dl) -and ((Get-Item $dl).Length -gt 50MB)
+                    }
+                    catch {
+                        Write-Warn2 ("download failed: " + $_.Exception.Message)
+                    }
+                    finally {
+                        $ProgressPreference = $prevProgress
+                    }
+                    if ($ok) {
+                        Move-Item -LiteralPath $dl -Destination $tsApk -Force
+                        Write-Ok ("downloaded: {0:N1} MB" -f ((Get-Item $tsApk).Length / 1MB))
+                    }
+                    else {
+                        if (Test-Path $dl) { Remove-Item -LiteralPath $dl -Force -ErrorAction SilentlyContinue }
+                        Write-Warn2 "could not obtain tailscale-android.apk"
+                        Write-Info "Install Tailscale from the Play Store on the phone, then re-run with -SkipPhone"
+                        Write-Info "Or download it yourself and save as: $tsApk"
+                    }
                 }
                 if (Test-Path $tsApk) {
                     Write-Info "installing Tailscale on the phone..."
                     $code = Invoke-Adb -Adb $adb -AdbArgs @('-s', $serial, 'install', '-r', $tsApk)
                     if ($code -eq 0) { Write-Ok "Tailscale installed" }
                     else { Write-Warn2 "Tailscale install failed" }
-                }
-                else {
-                    Write-Warn2 "tailscale-android.apk not found"
-                    Write-Info "Put it in bin\tailscale-android.apk, or install from the store"
-                    Write-Info "Download: https://f-droid.org/repo/com.tailscale.ipn_298177930.apk"
                 }
             }
 

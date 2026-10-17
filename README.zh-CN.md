@@ -36,6 +36,7 @@
 - [这是什么](#这是什么)
 - [亮点](#亮点)
 - [环境要求](#环境要求)
+- [下载与安装的完整流程](#下载与安装的完整流程)
 - [安装](#安装)
 - [手动安装](#手动安装)
 - [手机端](#手机端)
@@ -81,6 +82,42 @@ DSH webServer  ──▶  /phone-bridge 前缀路由  ──▶  sessionControll
 | **账号** | 你自己的免费 [Tailscale](https://login.tailscale.com/start) 账号 |
 
 可选，仅构建 APK 时需要：JDK 17 和 Android SDK build-tools 34.0.0。可选，仅 USB 推送到手机时需要：`adb`。
+
+## 下载与安装的完整流程
+
+从零到手机能用的全部步骤，按顺序：
+
+```dsh-ui
+{"title":"五步","gap":14,"items":[{"type":"steps","steps":[{"title":"1. 装插件本体","desc":"dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge"},{"title":"2. 注册到 profile","desc":"dsh.profile.bundles 加 dsh-phone-bridge，重启 DSH"},{"title":"3. 获取仓库其余文件","desc":"setup 脚本、APK 构建、文档不在 npm 包里，需要 git clone 或下 ZIP"},{"title":"4. 跑一键部署","desc":"setup-phone-bridge.ps1，自动装 Tailscale、改监听、构建 APK"},{"title":"5. 手机端","desc":"USB 自动推装，或浏览器直接开 URL"}]},{"type":"callout","tone":"warning","title":"关键：npm 包和仓库不是同一套文件","content":"`dsh plugin add github:` 走 npm pack 语义，只拿 `package.json` 的 `files` 白名单（index.js、client.js、cordis.patch.yml、web、vendor、bin）。setup 脚本、build-apk.ps1、IMPLEMENTATION.md、SETUP.md 都不在里面 —— 想用一键部署，必须先 clone 仓库。"}]}
+```
+
+### 三种获取方式，按需求选
+
+| 你想要什么 | 怎么做 | 拿到什么 |
+| --- | --- | --- |
+| **只装插件**，手机用浏览器 | `dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge` | `index.js` `client.js` `web/` `vendor/` `cordis.patch.yml` |
+| **要一键部署 / 构建 APK**（推荐） | `git clone https://github.com/chs-1108/dsh-phone-bridge.git` | 全部 44 个文件 |
+| **不想装 git** | 下 [ZIP](https://github.com/chs-1108/dsh-phone-bridge/archive/refs/heads/main.zip) 解压 | 同上 |
+
+### 仓库里有两个大文件不在 Git 中
+
+| 文件 | 大小 | 为什么不在 | 谁负责取 |
+| --- | --- | --- | --- |
+| `bin/tailscale-android.apk` | 100.6 MB | 超 GitHub 单文件 100 MB 硬限制 | **`setup-phone-bridge.ps1` 自动从 F-Droid 下载** |
+| `bin/cloudflared.exe` | 52.8 MB | 体积大且非必需 | 只在用 cloudflared 隧道时才需要 |
+
+`tailscale-android.apk` 不用管 —— 脚本第 9 步检测到缺失就会自己下载（约 100 MB，一次性）。也可以自己在手机上装 Play Store 版 Tailscale，然后加 `-SkipPhone`。
+
+`cloudflared.exe` 只有想拿 Cloudflare 隧道替代 Tailscale 时才要，从 [cloudflared releases](https://github.com/cloudflare/cloudflared/releases) 下 `cloudflared-windows-amd64.exe`，改名放进 `bin\`。
+
+### 装完之后验证
+
+```bash
+curl http://127.0.0.1:19387/phone-bridge/health
+# {"ok":true,"name":"phone-bridge","version":1}
+```
+
+返回这个就说明插件跑起来了，剩下的只是手机能不能连到它。
 
 ## 安装
 

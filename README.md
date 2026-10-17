@@ -36,6 +36,7 @@
 - [What this is](#what-this-is)
 - [Highlights](#highlights)
 - [Requirements](#requirements)
+- [How to get it](#how-to-get-it)
 - [Install](#install)
 - [Manual install](#manual-install)
 - [The phone side](#the-phone-side)
@@ -81,6 +82,46 @@ It consumes only DSH's public `webServer` and `sessionController` services. No c
 | **Account** | Your own free [Tailscale](https://login.tailscale.com/start) account |
 
 Optional, only for building the APK: JDK 17 and Android SDK build-tools 34.0.0. Optional, only for pushing to a phone over USB: `adb`.
+
+## How to get it
+
+The whole path from nothing to a working phone, in order:
+
+1. **Install the plugin** — `dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge`
+2. **Register it** — add `dsh-phone-bridge` to `dsh.profile.bundles`, restart DSH
+3. **Get the rest of the repo** — the deploy script, APK builder and docs are *not* in the npm package, so clone or download the ZIP if you want them
+4. **Run the deployer** — `.\setup-phone-bridge.ps1` handles Tailscale, the listen address and the APK
+5. **Phone side** — installed over USB by the script, or just open the URL in a browser
+
+> **The npm package and the repository are not the same file set.** `dsh plugin add github:` follows npm-pack semantics and ships only the `files` allowlist in `package.json` — `index.js`, `client.js`, `cordis.patch.yml`, `web`, `vendor`, `bin`. `setup-phone-bridge.ps1`, `build-apk.ps1`, `IMPLEMENTATION.md` and `SETUP.md` are not in it. To use the one-click deploy you need a clone.
+
+### Pick the option that matches what you want
+
+| You want | Do this | You get |
+| --- | --- | --- |
+| **Plugin only**, phone in a browser | `dsh plugin --profile desktop add github:chs-1108/dsh-phone-bridge` | `index.js` `client.js` `web/` `vendor/` `cordis.patch.yml` |
+| **One-click deploy / build the APK** (recommended) | `git clone https://github.com/chs-1108/dsh-phone-bridge.git` | all 44 files |
+| **No git** | download the [ZIP](https://github.com/chs-1108/dsh-phone-bridge/archive/refs/heads/main.zip) | same as above |
+
+### Two large files are deliberately not in Git
+
+| File | Size | Why it is absent | Who fetches it |
+| --- | --- | --- | --- |
+| `bin/tailscale-android.apk` | 100.6 MB | over GitHub's 100 MB per-file hard limit | **`setup-phone-bridge.ps1` downloads it from F-Droid** |
+| `bin/cloudflared.exe` | 52.8 MB | large and not required | only needed if you prefer a Cloudflare tunnel |
+
+You do not have to do anything about the Tailscale APK — step 9 of the deploy script notices it is missing and fetches it (about 100 MB, once). You can also install Tailscale from the Play Store on the phone yourself and pass `-SkipPhone`.
+
+`cloudflared.exe` is only for the alternative Cloudflare tunnel path instead of Tailscale. Get `cloudflared-windows-amd64.exe` from [cloudflared releases](https://github.com/cloudflare/cloudflared/releases), rename it to `cloudflared.exe`, drop it in `bin\`.
+
+### Confirm it loaded
+
+```bash
+curl http://127.0.0.1:19387/phone-bridge/health
+# {"ok":true,"name":"phone-bridge","version":1}
+```
+
+That answer means the plugin is running; everything left is whether the phone can reach it.
 
 ## Install
 
